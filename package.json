@@ -1,0 +1,23 @@
+{
+	"name": "basic-webpack-obfuscator",
+	"main": "index.js",
+	"type": "commonjs",
+	"dependencies": {
+		"@babel/generator": "^7.18.0",
+		"@babel/parser": "^7.18.0",
+		"@babel/traverse": "^7.18.0",
+		"@babel/types": "^7.18.0"
+	},
+	"devDependencies": {
+		"eslint-config-prettier": "^8.5.0",
+		"husky": "^7.0.4",
+		"lint-staged": "^12.3.7",
+		"prettier": "2.6.0"
+	},
+	"lint-staged": {
+		"*.{js,json}": "prettier --write"
+	},
+	"scripts": {
+		"prepare": "husky install"
+	}
+}
