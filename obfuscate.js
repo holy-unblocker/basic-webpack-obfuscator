@@ -5,62 +5,72 @@ const t = require('@babel/types');
 
 const command_prefix = 'obfuscation:';
 
-const call_function = '$CAll_string';
-const call_key = '$CAll_key';
-const call_strings = '$CAll_strings';
-
-function transform_string(input, key) {
-	const xor = key >> 0x4;
-	const frequency = key & 0xf;
-
-	let output = '';
-
-	for (let i = 0; i < input.length; i++) {
-		if (i % frequency === 0) {
-			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
-		} else {
-			output += input[i];
-		}
-	}
-
-	return output;
-}
-
-const {
-	program: {
-		body: [call_function_ast],
-	},
-} = parse(`
-function ${call_function}(i){
-	const input = ${call_strings}[i];
-	const xor = ${call_key} >> 0x4;
-	const frequency = ${call_key} & 0xf;
-
-	let output = '';
-
-	for (let i = 0; i < input.length; i++) {
-		if (i % frequency === 0) {
-			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
-		} else {
-			output += input[i];
-		}
-	}
-
-	return output;
-}`);
+/**
+ * 
+ * @typedef {object} obfuscateOptions
+ * @property {number} [salt]
+ * @property {boolean} [compact]
+ * @property {string} [source]
+ * @property {string} [id]
+ */
 
 /**
  *
  * @param {string} code
- * @param {number} salt
- * @param {import('@babel/generator').GeneratorOptions} generate_opts
+ * @param {obfuscateOptions} options
  * @returns {import('@babel/generator').GeneratorResult}
  */
-function obfuscate(code, salt, generate_opts) {
+function obfuscate(code, options) {
+	const identifier = `${t.toIdentifier(options.id || '')}__OBFUSCATE_`;
+
+	const call_function = `${identifier}_CALL__`;
+	const call_key = `${identifier}_KEY__`;
+	const call_strings = `${identifier}_STRINGS__`;
+
+	function transform_string(input, key) {
+		const xor = key >> 0x4;
+		const frequency = key & 0xf;
+
+		let output = '';
+
+		for (let i = 0; i < input.length; i++) {
+			if (i % frequency === 0) {
+				output += String.fromCharCode(input[i].charCodeAt() ^ xor);
+			} else {
+				output += input[i];
+			}
+		}
+
+		return output;
+	}
+
+	const {
+		program: {
+			body: [call_function_ast],
+		},
+	} = parse(`
+	function ${call_function}(i){
+		const input = ${call_strings}[i];
+		const xor = ${call_key} >> 0x4;
+		const frequency = ${call_key} & 0xf;
+	
+		let output = '';
+	
+		for (let i = 0; i < input.length; i++) {
+			if (i % frequency === 0) {
+				output += String.fromCharCode(input[i].charCodeAt() ^ xor);
+			} else {
+				output += input[i];
+			}
+		}
+	
+		return output;
+	}`);
+
 	let key;
 
 	{
-		let bad_key = 0xfff + (salt % 0xfff);
+		let bad_key = 0xfff + ((options.salt || 0) % 0xfff);
 		const xor = bad_key >> 0x4;
 		// 2-3
 		const frequency = ((bad_key & 0xf) % 2) + 2;
@@ -70,11 +80,14 @@ function obfuscate(code, salt, generate_opts) {
 		key = (xor << 4) + frequency;
 	}
 
+	const generate_sourcemap = typeof options.source === 'string';
+
 	const tree = parse(code, {
 		allowAwaitOutsideFunction: true,
 		allowImportExportEverywhere: true,
 		allowReturnOutsideFunction: true,
 		attachComment: true,
+		...(generate_sourcemap ? { sourceFilename: options.source } : {})
 	});
 
 	const strings = new Map();
@@ -223,7 +236,13 @@ function obfuscate(code, salt, generate_opts) {
 		call_function_ast
 	);
 
-	return generate(tree, generate_opts);
+	return generate(tree, {
+		compact: options.compact,
+		...(generate_sourcemap ? {
+			sourceMaps: true,
+			sourceFilename: options.source,
+		} : {})
+	});
 }
 
 module.exports = obfuscate;
