@@ -5,6 +5,7 @@ const t = require('@babel/types');
 
 const command_prefix = 'obfuscation:';
 
+<<<<<<< HEAD
 function transform_string(input, key) {
 	const xor = key >> 0x4;
 	const frequency = key & 0xf;
@@ -48,6 +49,35 @@ function obfuscate(code, options) {
 			body: [call_function_ast],
 		},
 	} = parse(`const ${call_function} = (i) =>{
+=======
+const call_function = '$CAll_string';
+const call_key = '$CAll_key';
+const call_strings = '$CAll_strings';
+
+function transform_string(input, key) {
+	const xor = key >> 0x4;
+	const frequency = key & 0xf;
+
+	let output = '';
+
+	for (let i = 0; i < input.length; i++) {
+		if (i % frequency === 0) {
+			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
+		} else {
+			output += input[i];
+		}
+	}
+
+	return output;
+}
+
+const {
+	program: {
+		body: [call_function_ast],
+	},
+} = parse(`
+function ${call_function}(i){
+>>>>>>> parent of ffd2a14 (plugin, sourcemaps)
 	const input = ${call_strings}[i];
 	const xor = ${call_key} >> 0x4;
 	const frequency = ${call_key} & 0xf;
@@ -63,12 +93,24 @@ function obfuscate(code, options) {
 	}
 
 	return output;
+<<<<<<< HEAD
 };`);
+=======
+}`);
+>>>>>>> parent of ffd2a14 (plugin, sourcemaps)
 
+/**
+ *
+ * @param {string} code
+ * @param {number} salt
+ * @param {import('@babel/generator').GeneratorOptions} generate_opts
+ * @returns {import('@babel/generator').GeneratorResult}
+ */
+function obfuscate(code, salt, generate_opts) {
 	let key;
 
 	{
-		let bad_key = 0xfff + ((options.salt || 0) % 0xfff);
+		let bad_key = 0xfff + (salt % 0xfff);
 		const xor = bad_key >> 0x4;
 		// 2-3
 		const frequency = ((bad_key & 0xf) % 2) + 2;
@@ -78,14 +120,11 @@ function obfuscate(code, options) {
 		key = (xor << 4) + frequency;
 	}
 
-	const generate_sourcemap = typeof options.source === 'string';
-
 	const tree = parse(code, {
 		allowAwaitOutsideFunction: true,
 		allowImportExportEverywhere: true,
 		allowReturnOutsideFunction: true,
 		attachComment: true,
-		...(generate_sourcemap ? { sourceFilename: options.source } : {})
 	});
 
 	const strings = new Map();
@@ -234,6 +273,7 @@ function obfuscate(code, options) {
 		call_function_ast
 	);
 
+<<<<<<< HEAD
 	return generate(t.blockStatement(tree.program.body), {
 		compact: options.compact,
 		...(generate_sourcemap ? {
@@ -241,6 +281,9 @@ function obfuscate(code, options) {
 			sourceFilename: options.source,
 		} : {})
 	});
+=======
+	return generate(tree, generate_opts);
+>>>>>>> parent of ffd2a14 (plugin, sourcemaps)
 }
 
 module.exports = obfuscate;

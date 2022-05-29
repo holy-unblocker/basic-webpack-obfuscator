@@ -1,16 +1,12 @@
 {
 	"name": "basic-webpack-obfuscator",
-	"main": "Plugin.js",
-	"version": "0.0.2",
+	"main": "index.js",
 	"type": "commonjs",
 	"dependencies": {
 		"@babel/generator": "^7.18.0",
 		"@babel/parser": "^7.18.0",
 		"@babel/traverse": "^7.18.0",
-		"@babel/types": "^7.18.0",
-		"multi-stage-sourcemap": "^0.3.1",
-		"multimatch": "^5.0.0",
-		"webpack": "^5.72.1"
+		"@babel/types": "^7.18.0"
 	},
 	"devDependencies": {
 		"eslint-config-prettier": "^8.5.0",
