@@ -66,7 +66,7 @@ class BasicWebpackObfuscatorPlugin {
 									);
 								}
 
-								return;
+								continue;
 							}
 
 							const isValidExtension = allowedExtensions.some(extension =>
@@ -74,7 +74,7 @@ class BasicWebpackObfuscatorPlugin {
 							);
 
 							if (!isValidExtension || this.shouldExclude(fileName)) {
-								return;
+								continue;
 							}
 
 							const asset = compilation.assets[fileName];
@@ -83,7 +83,7 @@ class BasicWebpackObfuscatorPlugin {
 
 							const { code: obfuscatedSource, map: obfuscationSourceMap } = obfuscate(inputSource, {
 								...this.options,
-								id: fileName,
+								id: chunk.contentHash.javascript,
 								source: fileName,
 							});
 

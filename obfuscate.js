@@ -21,7 +21,7 @@ const command_prefix = 'obfuscation:';
  * @returns {import('@babel/generator').GeneratorResult}
  */
 function obfuscate(code, options) {
-	const identifier = `${t.toIdentifier(options.id || '')}__OBFUSCATE_`;
+	const identifier = `__${t.toIdentifier(options.id || '')}__OBFUSCATE_`;
 
 	const call_function = `${identifier}_CALL__`;
 	const call_key = `${identifier}_KEY__`;
