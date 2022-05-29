@@ -5,6 +5,23 @@ const t = require('@babel/types');
 
 const command_prefix = 'obfuscation:';
 
+function transform_string(input, key) {
+	const xor = key >> 0x4;
+	const frequency = key & 0xf;
+
+	let output = '';
+
+	for (let i = 0; i < input.length; i++) {
+		if (i % frequency === 0) {
+			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
+		} else {
+			output += input[i];
+		}
+	}
+
+	return output;
+}
+
 /**
  * 
  * @typedef {object} obfuscateOptions
@@ -21,51 +38,32 @@ const command_prefix = 'obfuscation:';
  * @returns {import('@babel/generator').GeneratorResult}
  */
 function obfuscate(code, options) {
-	const identifier = `__${t.toIdentifier(options.id || '')}__OBFUSCATE_`;
-
+	const identifier = `__${options.id ? options.id.toString().replace(/[^a-z0-9_$]/gi, '_') : '$cAll'}__OBFUSCATE_`;
 	const call_function = `${identifier}_CALL__`;
 	const call_key = `${identifier}_KEY__`;
 	const call_strings = `${identifier}_STRINGS__`;
-
-	function transform_string(input, key) {
-		const xor = key >> 0x4;
-		const frequency = key & 0xf;
-
-		let output = '';
-
-		for (let i = 0; i < input.length; i++) {
-			if (i % frequency === 0) {
-				output += String.fromCharCode(input[i].charCodeAt() ^ xor);
-			} else {
-				output += input[i];
-			}
-		}
-
-		return output;
-	}
 
 	const {
 		program: {
 			body: [call_function_ast],
 		},
-	} = parse(`
-	function ${call_function}(i){
-		const input = ${call_strings}[i];
-		const xor = ${call_key} >> 0x4;
-		const frequency = ${call_key} & 0xf;
-	
-		let output = '';
-	
-		for (let i = 0; i < input.length; i++) {
-			if (i % frequency === 0) {
-				output += String.fromCharCode(input[i].charCodeAt() ^ xor);
-			} else {
-				output += input[i];
-			}
+	} = parse(`const ${call_function} = (i) =>{
+	const input = ${call_strings}[i];
+	const xor = ${call_key} >> 0x4;
+	const frequency = ${call_key} & 0xf;
+
+	let output = '';
+
+	for (let i = 0; i < input.length; i++) {
+		if (i % frequency === 0) {
+			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
+		} else {
+			output += input[i];
 		}
-	
-		return output;
-	}`);
+	}
+
+	return output;
+};`);
 
 	let key;
 
