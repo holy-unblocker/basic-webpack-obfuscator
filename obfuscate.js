@@ -234,7 +234,7 @@ function obfuscate(code, options) {
 		call_function_ast
 	);
 
-	return generate(tree, {
+	return generate(t.blockStatement(tree.program.body), {
 		compact: options.compact,
 		...(generate_sourcemap ? {
 			sourceMaps: true,
