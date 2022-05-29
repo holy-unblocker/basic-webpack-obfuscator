@@ -22,13 +22,13 @@ function transform_string(input, key) {
 	return output;
 }
 
-const call_function = `__$obFUSCate_CALL__`;
+const call_function = `__BWOC_CALLBACK__`;
 
 const {
 	program: {
 		body: [{ expression: call_function_ast }],
 	},
-} = parse(`(function(key, strings, string_id){
+} = parse(`(function BasicWebpackObfuscatorCallback(key, strings, string_id){
 	const input = strings[string_id];
 	
 	const xor = key >> 0x4;
