@@ -5,7 +5,6 @@ const t = require('@babel/types');
 
 const command_prefix = 'obfuscation:';
 
-<<<<<<< HEAD
 function transform_string(input, key) {
 	const xor = key >> 0x4;
 	const frequency = key & 0xf;
@@ -22,6 +21,31 @@ function transform_string(input, key) {
 
 	return output;
 }
+
+const call_function = `__$obFUSCate_CALL__`;
+
+const {
+	program: {
+		body: [{ expression: call_function_ast }],
+	},
+} = parse(`(function(key, strings, string_id){
+	const input = strings[string_id];
+	
+	const xor = key >> 0x4;
+	const frequency = key & 0xf;
+
+	let output = '';
+
+	for (let i = 0; i < input.length; i++) {
+		if (i % frequency === 0) {
+			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
+		} else {
+			output += input[i];
+		}
+	}
+
+	return output;
+})`);
 
 /**
  * 
@@ -30,87 +54,47 @@ function transform_string(input, key) {
  * @property {boolean} [compact]
  * @property {string} [source]
  * @property {string} [id]
+ * @property {(function(): boolean)[]} [exclude]
  */
 
 /**
  *
  * @param {string} code
- * @param {obfuscateOptions} options
+ * @param {obfuscateOptions} options_
  * @returns {import('@babel/generator').GeneratorResult}
  */
-function obfuscate(code, options) {
-	const identifier = `__${options.id ? options.id.toString().replace(/[^a-z0-9_$]/gi, '_') : '$cAll'}__OBFUSCATE_`;
-	const call_function = `${identifier}_CALL__`;
-	const call_key = `${identifier}_KEY__`;
-	const call_strings = `${identifier}_STRINGS__`;
+function obfuscate(code, options_) {
+	/**
+	 * @type {obfuscateOptions}
+	 */
+	const options = {};
 
-	const {
-		program: {
-			body: [call_function_ast],
-		},
-	} = parse(`const ${call_function} = (i) =>{
-=======
-const call_function = '$CAll_string';
-const call_key = '$CAll_key';
-const call_strings = '$CAll_strings';
-
-function transform_string(input, key) {
-	const xor = key >> 0x4;
-	const frequency = key & 0xf;
-
-	let output = '';
-
-	for (let i = 0; i < input.length; i++) {
-		if (i % frequency === 0) {
-			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
-		} else {
-			output += input[i];
-		}
+	if ('salt' in options_ && isNaN(options_.salt)) {
+		options.salt = parseInt(options_.salt);
+	} else {
+		options.salt = 0;
 	}
 
-	return output;
-}
-
-const {
-	program: {
-		body: [call_function_ast],
-	},
-} = parse(`
-function ${call_function}(i){
->>>>>>> parent of ffd2a14 (plugin, sourcemaps)
-	const input = ${call_strings}[i];
-	const xor = ${call_key} >> 0x4;
-	const frequency = ${call_key} & 0xf;
-
-	let output = '';
-
-	for (let i = 0; i < input.length; i++) {
-		if (i % frequency === 0) {
-			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
-		} else {
-			output += input[i];
-		}
+	if ('compact' in options_ && options_.compact) {
+		options.compact = true;
+	} else {
+		options.compact = false;
 	}
 
-	return output;
-<<<<<<< HEAD
-};`);
-=======
-}`);
->>>>>>> parent of ffd2a14 (plugin, sourcemaps)
+	if ('source' in options_ && options_.source) {
+		options.source = String(options_.source);
+	}
 
-/**
- *
- * @param {string} code
- * @param {number} salt
- * @param {import('@babel/generator').GeneratorOptions} generate_opts
- * @returns {import('@babel/generator').GeneratorResult}
- */
-function obfuscate(code, salt, generate_opts) {
+	if ('exclude' in options_ && options_.exclude) {
+		options.exclude = options_.exclude.filter(Boolean);
+	} else {
+		options.exclude = [];
+	}
+
 	let key;
 
 	{
-		let bad_key = 0xfff + (salt % 0xfff);
+		let bad_key = 0xfff + (options.salt % 0xfff);
 		const xor = bad_key >> 0x4;
 		// 2-3
 		const frequency = ((bad_key & 0xf) % 2) + 2;
@@ -120,16 +104,18 @@ function obfuscate(code, salt, generate_opts) {
 		key = (xor << 4) + frequency;
 	}
 
+	const generate_sourcemap = 'source' in options;
+
 	const tree = parse(code, {
 		allowAwaitOutsideFunction: true,
 		allowImportExportEverywhere: true,
 		allowReturnOutsideFunction: true,
 		attachComment: true,
+		...(generate_sourcemap ? { sourceFilename: options.source } : {})
 	});
 
 	const strings = new Map();
 	const strings_array = [];
-	const call_function_id = t.identifier(call_function);
 
 	/**
 	 * @param {string} string
@@ -138,11 +124,11 @@ function obfuscate(code, salt, generate_opts) {
 	function append_string(string) {
 		if (!strings.has(string)) {
 			const i = strings_array.length;
-			strings_array.push(transform_string(string, key));
+			strings_array.push(t.stringLiteral(transform_string(string, key)));
 			strings.set(string, i);
 		}
 
-		return t.callExpression(call_function_id, [
+		return t.callExpression(t.identifier(call_function), [
 			t.numericLiteral(strings.get(string)),
 		]);
 	}
@@ -194,6 +180,17 @@ function obfuscate(code, salt, generate_opts) {
 		return false;
 	}
 
+
+	function test(string) {
+		for (let test of options.exclude) {
+			if (test(string)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	traverse(tree, {
 		ImportDeclaration(path) {
 			path.skip();
@@ -211,8 +208,12 @@ function obfuscate(code, salt, generate_opts) {
 
 			for (let element of path.node.quasis) {
 				if (element.value.raw) {
-					expressions.push(append_string(element.value.raw));
-					quasis.push(t.templateElement({ raw: '' }, false));
+					if (test(element.value.raw)) {
+						expressions.push(append_string(element.value.raw));
+						quasis.push(t.templateElement({ raw: '' }, false));
+					} else {
+						quasis.push(t.templateElement({ raw: element.value.raw }, false));
+					}
 				}
 
 				if (!element.tail) {
@@ -243,47 +244,43 @@ function obfuscate(code, salt, generate_opts) {
 				key = path.node.key.value;
 			}
 
-			if (key !== undefined) {
-				path.replaceWith(
-					t.objectProperty(
-						append_string(key),
-						path.node.value,
-						true,
-						path.node.shorthand,
-						path.node.decorators
-					)
-				);
-			}
+			if (key === undefined || !test(key)) return;;
+
+			path.replaceWith(
+				t.objectProperty(
+					append_string(key),
+					path.node.value,
+					true,
+					path.node.shorthand,
+					path.node.decorators
+				)
+			);
+
 		},
 		StringLiteral(path) {
-			if (will_skip(path)) return;
+			if (will_skip(path) || !test(path.node.value)) return;
 
 			path.replaceWith(append_string(path.node.value));
 		},
 	});
 
-	tree.program.body.unshift(
-		t.variableDeclaration('const', [
-			t.variableDeclarator(
-				t.identifier(call_strings),
-				t.arrayExpression(strings_array.map(string => t.stringLiteral(string)))
-			),
-			t.variableDeclarator(t.identifier(call_key), t.numericLiteral(key)),
-		]),
-		call_function_ast
-	);
-
-<<<<<<< HEAD
-	return generate(t.blockStatement(tree.program.body), {
+	return generate(t.program([
+		t.expressionStatement(t.callExpression(t.arrowFunctionExpression([
+			t.identifier(call_function)
+		], t.blockStatement(tree.program.body)), [
+			t.callExpression(t.memberExpression(call_function_ast, t.identifier('bind')), [
+				t.nullLiteral(),
+				t.numericLiteral(key),
+				t.arrayExpression(strings_array),
+			])
+		]))
+	]), {
 		compact: options.compact,
 		...(generate_sourcemap ? {
 			sourceMaps: true,
 			sourceFilename: options.source,
 		} : {})
 	});
-=======
-	return generate(tree, generate_opts);
->>>>>>> parent of ffd2a14 (plugin, sourcemaps)
 }
 
 module.exports = obfuscate;
