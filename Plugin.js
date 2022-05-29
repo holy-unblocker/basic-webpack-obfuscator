@@ -1,4 +1,4 @@
-const webpack = require('../website/node_modules/webpack');
+const webpack = require('webpack');
 const multimatch = require('multimatch');
 const { transfer: transferSourceMap } = require('multi-stage-sourcemap');
 const obfuscate = require('./obfuscate');
