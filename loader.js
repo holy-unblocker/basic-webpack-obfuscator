@@ -1,3 +1,5 @@
+'use strict';
+
 const obfuscate = require('./obfuscate.js');
 
 function loader(code) {

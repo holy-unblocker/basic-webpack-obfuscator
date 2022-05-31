@@ -1,3 +1,5 @@
+'use strict';
+
 const { parse } = require('@babel/parser');
 const traverse = require('@babel/traverse').default;
 const generate = require('@babel/generator').default;
@@ -48,7 +50,7 @@ const {
 })`);
 
 /**
- * 
+ *
  * @typedef {object} obfuscateOptions
  * @property {number} [salt]
  * @property {boolean} [compact]
@@ -111,7 +113,7 @@ function obfuscate(code, options_) {
 		allowImportExportEverywhere: true,
 		allowReturnOutsideFunction: true,
 		attachComment: true,
-		...(generate_sourcemap ? { sourceFilename: options.source } : {})
+		...(generate_sourcemap ? { sourceFilename: options.source } : {}),
 	});
 
 	const strings = new Map();
@@ -180,7 +182,6 @@ function obfuscate(code, options_) {
 		return false;
 	}
 
-
 	function test(string) {
 		for (let test of options.exclude) {
 			if (test(string)) {
@@ -244,7 +245,7 @@ function obfuscate(code, options_) {
 				key = path.node.key.value;
 			}
 
-			if (key === undefined || !test(key)) return;;
+			if (key === undefined || !test(key)) return;
 
 			path.replaceWith(
 				t.objectProperty(
@@ -255,7 +256,6 @@ function obfuscate(code, options_) {
 					path.node.decorators
 				)
 			);
-
 		},
 		StringLiteral(path) {
 			if (will_skip(path) || !test(path.node.value)) return;
@@ -264,23 +264,37 @@ function obfuscate(code, options_) {
 		},
 	});
 
-	return generate(t.program([
-		t.expressionStatement(t.callExpression(t.arrowFunctionExpression([
-			t.identifier(call_function)
-		], t.blockStatement(tree.program.body)), [
-			t.callExpression(t.memberExpression(call_function_ast, t.identifier('bind')), [
-				t.nullLiteral(),
-				t.numericLiteral(key),
-				t.arrayExpression(strings_array),
-			])
-		]))
-	]), {
-		compact: options.compact,
-		...(generate_sourcemap ? {
-			sourceMaps: true,
-			sourceFilename: options.source,
-		} : {})
-	});
+	return generate(
+		t.program([
+			t.expressionStatement(
+				t.callExpression(
+					t.arrowFunctionExpression(
+						[t.identifier(call_function)],
+						t.blockStatement(tree.program.body)
+					),
+					[
+						t.callExpression(
+							t.memberExpression(call_function_ast, t.identifier('bind')),
+							[
+								t.nullLiteral(),
+								t.numericLiteral(key),
+								t.arrayExpression(strings_array),
+							]
+						),
+					]
+				)
+			),
+		]),
+		{
+			compact: options.compact,
+			...(generate_sourcemap
+				? {
+						sourceMaps: true,
+						sourceFilename: options.source,
+				  }
+				: {}),
+		}
+	);
 }
 
 module.exports = obfuscate;

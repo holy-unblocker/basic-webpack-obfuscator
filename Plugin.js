@@ -1,3 +1,5 @@
+'use strict';
+
 const webpack = require('webpack');
 const multimatch = require('multimatch');
 const { transfer: transferSourceMap } = require('multi-stage-sourcemap');
@@ -7,9 +9,9 @@ const allowedExtensions = ['.js', '.mjs'];
 
 class BasicWebpackObfuscatorPlugin {
 	/**
-	 * 
-	 * @param {{sourceMap:boolean} & import('./obfuscate.js').obfuscateOptions} options 
-	 * @param {string[]} excludes 
+	 *
+	 * @param {{sourceMap:boolean} & import('./obfuscate.js').obfuscateOptions} options
+	 * @param {string[]} excludes
 	 */
 	constructor(options = {}, excludes) {
 		this.options = options;
@@ -17,9 +19,9 @@ class BasicWebpackObfuscatorPlugin {
 		this.excludes = this.excludes.concat(excludes || []);
 	}
 	/**
-	 * 
-	 * @param {import('webpack').Compiler} compiler 
-	 * @returns 
+	 *
+	 * @param {import('webpack').Compiler} compiler
+	 * @returns
 	 */
 	apply(compiler) {
 		const isDevServer = process.argv.join('').includes('webpack-dev-server');
@@ -86,17 +88,20 @@ class BasicWebpackObfuscatorPlugin {
 							const { inputSource, inputSourceMap } =
 								this.extractSourceAndSourceMap(asset);
 
-							const { code: obfuscatedSource, map: obfuscationSourceMap } = obfuscate(inputSource, {
-								...this.options,
-								source: fileName,
-								exclude: contentHashes.map(hash => string => {
-									for (let key in hash) {
-										if (hash[key].includes(string)) {
-											return true;
-										}
-									}
-								}).concat(this.options.exclude),
-							});
+							const { code: obfuscatedSource, map: obfuscationSourceMap } =
+								obfuscate(inputSource, {
+									...this.options,
+									source: fileName,
+									exclude: contentHashes
+										.map(hash => string => {
+											for (let key in hash) {
+												if (hash[key].includes(string)) {
+													return true;
+												}
+											}
+										})
+										.concat(this.options.exclude),
+								});
 
 							if (this.options.sourceMap && inputSourceMap) {
 								sourcemapOutput[fileName] = obfuscationSourceMap;
@@ -123,7 +128,8 @@ class BasicWebpackObfuscatorPlugin {
 							}
 						}
 					}
-				});
+				}
+			);
 		});
 	}
 	shouldExclude(filePath) {
