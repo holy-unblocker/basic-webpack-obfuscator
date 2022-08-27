@@ -4,7 +4,7 @@ A simple solution to obfuscate the strings in your Webpack scripts. This isn't a
 
 ## Technicals
 
-
+We hook `Compilation.PROCESS_ASSETS_STAGE_DEV_TOOLING` and modify files matching `.js` and `.mjs`.
 
 ## Usage
 
@@ -27,3 +27,4 @@ const webpackConfig: Configuration = {
 
 ## Options
 
+Options can be found in the type definitions (browse node_modules or just read [src/index.ts](src/index.ts)).
