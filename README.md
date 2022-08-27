@@ -1,5 +1,7 @@
 # basic-webpack-obfuscator
 
+<a href="https://www.npmjs.com/package/basic-webpack-obfuscator"><img src="https://img.shields.io/npm/v/basic-webpack-obfuscator.svg?maxAge=3600" alt="npm version" /></a>
+
 A simple solution to obfuscate the strings in your Webpack scripts. This isn't a complete obfuscator nor a good one, simple RC4 is used to "obfuscate" your strings.
 
 ## Technicals
