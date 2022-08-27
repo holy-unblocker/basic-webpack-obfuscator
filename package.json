@@ -1,6 +1,12 @@
 {
 	"name": "basic-webpack-obfuscator",
-	"main": "dist/Plugin.js",
+	"main": "dist/index.js",
+	"version": "1.0.0",
+	"license": "GPLv3",
+	"repository": {
+		"type": "git",
+		"url": "https://git.holy.how/holy/basic-webpack-obfuscator.git"
+	},
 	"type": "module",
 	"scripts": {
 		"build": "tsc",

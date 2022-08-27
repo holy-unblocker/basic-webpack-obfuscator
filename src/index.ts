@@ -3,7 +3,7 @@ import webpack from 'webpack';
 import { transfer } from 'multi-stage-sourcemap';
 import obfuscate from './obfuscate.js';
 
-const allowedExtensions = ['.js', '.mjs'];
+export const allowedExtensions = ['.js', '.mjs'];
 
 export interface Options {
 	sourceMap: boolean;
@@ -11,7 +11,7 @@ export interface Options {
 	salt: number;
 }
 
-export default class BasicWebpackObfuscatorPlugin {
+export default class BasicWebpackObfuscator {
 	options: Options;
 	constructor(options?: Partial<Options>) {
 		this.options = {
@@ -20,26 +20,11 @@ export default class BasicWebpackObfuscatorPlugin {
 			salt: options?.salt || 0,
 		};
 	}
-	/**
-	 *
-	 * @param {import('webpack').Compiler} compiler
-	 * @returns
-	 */
 	apply(compiler: Compiler) {
-		const isDevServer = process.argv.join('').includes('webpack-dev-server');
-
-		if (isDevServer) {
-			console.info(
-				'BasicWebpackObfuscator is disabled on webpack-dev-server as the reloading scripts ',
-				'and the obfuscator can interfere with each other and break the build'
-			);
-			return;
-		}
-		const pluginName = this.constructor.name;
-		compiler.hooks.compilation.tap(pluginName, compilation => {
+		compiler.hooks.compilation.tap('BasicWebpackObfuscator', compilation => {
 			compilation.hooks.processAssets.tap(
 				{
-					name: 'WebpackObfuscator',
+					name: 'BasicWebpackObfuscator',
 					stage: webpack.Compilation.PROCESS_ASSETS_STAGE_DEV_TOOLING,
 				},
 				assets => {
@@ -62,7 +47,7 @@ export default class BasicWebpackObfuscatorPlugin {
 
 								const transferredSourceMap = transfer({
 									fromSourceMap: sourcemapOutput[srcName],
-									toSourceMap: compilation.assets[fileName].source(),
+									toSourceMap: compilation.assets[fileName].source().toString(),
 								});
 								const finalSourcemap = JSON.parse(transferredSourceMap);
 								finalSourcemap['sourcesContent'] = JSON.parse(
@@ -102,7 +87,7 @@ export default class BasicWebpackObfuscatorPlugin {
 								sourcemapOutput[fileName] = obfuscationSourceMap;
 
 								const transferredSourceMap = transfer({
-									fromSourceMap: obfuscationSourceMap,
+									fromSourceMap: JSON.stringify(obfuscationSourceMap),
 									toSourceMap: inputSourceMap,
 								});
 
