@@ -1,13 +1,20 @@
-'use strict';
+// babel sucks! Property.shorthand is missing in the typedefs, traverse module is incorrectly typed (it isn't a __esModule but they export using `module.export.default = traverse;`, so annoying!)
 
-const { parse } = require('@babel/parser');
-const traverse = require('@babel/traverse').default;
-const generate = require('@babel/generator').default;
-const t = require('@babel/types');
+import { parse } from '@babel/parser';
+import type { NodePath } from '@babel/traverse';
+import traverseMod from '@babel/traverse';
+import generateMod from '@babel/generator';
+import * as t from '@babel/types';
 
-const command_prefix = 'obfuscation:';
+const traverse = (traverseMod as unknown as { default: typeof traverseMod })
+	.default;
 
-function transform_string(input, key) {
+const generate = (generateMod as unknown as { default: typeof generateMod })
+	.default;
+
+const commandPrefix = 'obfuscation:';
+
+function transformString(input: string, key: number) {
 	const xor = key >> 0x4;
 	const frequency = key & 0xf;
 
@@ -15,7 +22,7 @@ function transform_string(input, key) {
 
 	for (let i = 0; i < input.length; i++) {
 		if (i % frequency === 0) {
-			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
+			output += String.fromCharCode(input[i].charCodeAt(0) ^ xor);
 		} else {
 			output += input[i];
 		}
@@ -24,14 +31,11 @@ function transform_string(input, key) {
 	return output;
 }
 
-const call_function = `__BWOC_CALLBACK__`;
+const callFunction = `__BWOC_CALLBACK__`;
 
-const {
-	program: {
-		body: [{ expression: call_function_ast }],
-	},
-} = parse(`(function BasicWebpackObfuscatorCallback(key, strings, string_id){
-	const input = strings[string_id];
+const callFunctionAST = (
+	parse(`(function BasicWebpackObfuscatorCallback(key, strings, stringID){
+	const input = strings[stringID];
 	
 	const xor = key >> 0x4;
 	const frequency = key & 0xf;
@@ -47,90 +51,46 @@ const {
 	}
 
 	return output;
-})`);
+})`).program.body[0] as t.ExpressionStatement
+).expression as t.CallExpression;
 
-/**
- *
- * @typedef {object} obfuscateOptions
- * @property {number} [salt]
- * @property {boolean} [compact]
- * @property {string} [source]
- * @property {string} [id]
- * @property {(function(): boolean)[]} [exclude]
- */
+export interface ObfuscateOptions {
+	salt: number;
+	compact: boolean;
+	source: string;
+	sourceMap?: boolean;
+	exclude: ((identifier: string) => boolean)[];
+}
 
-/**
- *
- * @param {string} code
- * @param {obfuscateOptions} options_
- * @returns {import('@babel/generator').GeneratorResult}
- */
-function obfuscate(code, options_) {
-	/**
-	 * @type {obfuscateOptions}
-	 */
-	const options = {};
+export default function obfuscate(code: string, options: ObfuscateOptions) {
+	const badKey = 0xfff + (options.salt % 0xfff);
+	const xor = badKey >> 0x4;
+	// 2-3
+	const frequency = ((badKey & 0xf) % 2) + 2;
 
-	if ('salt' in options_ && isNaN(options_.salt)) {
-		options.salt = parseInt(options_.salt);
-	} else {
-		options.salt = 0;
-	}
-
-	if ('compact' in options_ && options_.compact) {
-		options.compact = true;
-	} else {
-		options.compact = false;
-	}
-
-	if ('source' in options_ && options_.source) {
-		options.source = String(options_.source);
-	}
-
-	if ('exclude' in options_ && options_.exclude) {
-		options.exclude = options_.exclude.filter(Boolean);
-	} else {
-		options.exclude = [];
-	}
-
-	let key;
-
-	{
-		let bad_key = 0xfff + (options.salt % 0xfff);
-		const xor = bad_key >> 0x4;
-		// 2-3
-		const frequency = ((bad_key & 0xf) % 2) + 2;
-
-		// SHORT xor
-		// CHAR frequency
-		key = (xor << 4) + frequency;
-	}
-
-	const generate_sourcemap = 'source' in options;
+	// SHORT xor
+	// CHAR frequency
+	const key = (xor << 4) + frequency;
 
 	const tree = parse(code, {
 		allowAwaitOutsideFunction: true,
 		allowImportExportEverywhere: true,
 		allowReturnOutsideFunction: true,
 		attachComment: true,
-		...(generate_sourcemap ? { sourceFilename: options.source } : {}),
+		...(options.sourceMap ? { sourceFilename: options.source } : {}),
 	});
 
 	const strings = new Map();
-	const strings_array = [];
+	const stringsArray = [];
 
-	/**
-	 * @param {string} string
-	 * @returns {t.Node}
-	 */
-	function append_string(string) {
+	function appendString(string: string) {
 		if (!strings.has(string)) {
-			const i = strings_array.length;
-			strings_array.push(t.stringLiteral(transform_string(string, key)));
+			const i = stringsArray.length;
+			stringsArray.push(t.stringLiteral(transformString(string, key)));
 			strings.set(string, i);
 		}
 
-		return t.callExpression(t.identifier(call_function), [
+		return t.callExpression(t.identifier(callFunction), [
 			t.numericLiteral(strings.get(string)),
 		]);
 	}
@@ -145,48 +105,55 @@ function obfuscate(code, options_) {
 	const { [call()]: test } =
 	*/
 
-	const skip_obfuscation = [];
+	interface SkipLoc {
+		start: number;
+		end?: number;
+	}
 
-	let skip_building;
-	for (let comment of tree.comments) {
+	const skipObfuscation = [];
+
+	let skipBuilding: SkipLoc | undefined;
+
+	for (const comment of tree.comments) {
 		const trimmed = comment.value.trim();
 
-		if (trimmed.startsWith(command_prefix)) {
-			const command = trimmed.slice(command_prefix.length);
+		if (trimmed.startsWith(commandPrefix)) {
+			const command = trimmed.slice(commandPrefix.length);
 
 			if (command === 'disable') {
-				const loc = { start: comment.end };
-				skip_building = loc;
-				skip_obfuscation.push(loc);
+				const loc: SkipLoc = { start: comment.end };
+				skipBuilding = loc;
+				skipObfuscation.push(loc);
 			} else if (command === 'enable') {
-				if (!skip_building) {
+				if (!skipBuilding) {
 					console.warn('Unmatched :disable command');
 				} else {
-					skip_building.end = comment.start;
+					skipBuilding.end = comment.start;
+					skipBuilding = undefined;
 				}
 			}
 		}
 	}
 
-	function will_skip(path) {
-		if (path.node.obfuscated) {
-			return true;
-		}
+	const obfuscatedNodes = new WeakSet<t.Node>();
 
-		for (let { start, end } of skip_obfuscation) {
-			if (start < path.node.start && end > path.node.start) {
+	function willSkip(path: NodePath<t.Node>) {
+		if (obfuscatedNodes.has(path.node)) return true;
+
+		for (const loc of skipObfuscation)
+			if (
+				loc.start < path.node.start &&
+				'end' in loc &&
+				loc.end > path.node.start
+			)
 				return true;
-			}
-		}
 
 		return false;
 	}
 
-	function test(string) {
-		for (let test of options.exclude) {
-			if (test(string)) {
-				return false;
-			}
+	function test(identifier: string) {
+		for (const test of options.exclude) {
+			if (test(identifier)) return false;
 		}
 
 		return true;
@@ -200,17 +167,17 @@ function obfuscate(code, options_) {
 			path.skip();
 		},
 		TemplateLiteral(path) {
-			if (will_skip(path)) return;
+			if (willSkip(path)) return;
 
 			const quasis = [];
 			const expressions = [];
 
-			const node_expressions = [...path.node.expressions];
+			const nodeExpressions = [...path.node.expressions];
 
-			for (let element of path.node.quasis) {
+			for (const element of path.node.quasis) {
 				if (element.value.raw) {
 					if (test(element.value.raw)) {
-						expressions.push(append_string(element.value.raw));
+						expressions.push(appendString(element.value.raw));
 						quasis.push(t.templateElement({ raw: '' }, false));
 					} else {
 						quasis.push(t.templateElement({ raw: element.value.raw }, false));
@@ -218,7 +185,7 @@ function obfuscate(code, options_) {
 				}
 
 				if (!element.tail) {
-					expressions.push(node_expressions.shift());
+					expressions.push(nodeExpressions.shift());
 					quasis.push(t.templateElement({ raw: '' }, false));
 				}
 			}
@@ -230,37 +197,33 @@ function obfuscate(code, options_) {
 			// path.skip()
 
 			const ast = t.templateLiteral(quasis, expressions);
-			ast.obfuscated = true;
-
+			obfuscatedNodes.add(ast);
 			path.replaceWith(ast);
 		},
 		Property(path) {
-			if (will_skip(path)) return;
+			if (willSkip(path)) return;
 
-			let key;
+			let key: string | undefined;
 
-			if (t.isIdentifier(path.node.key)) {
-				key = path.node.key.name;
-			} else if (t.isStringLiteral(path.node.key)) {
-				key = path.node.key.value;
-			}
+			if (t.isIdentifier(path.node.key)) key = path.node.key.name;
+			else if (t.isStringLiteral(path.node.key)) key = path.node.key.value;
 
 			if (key === undefined || !test(key)) return;
 
 			path.replaceWith(
 				t.objectProperty(
-					append_string(key),
+					appendString(key),
 					path.node.value,
 					true,
-					path.node.shorthand,
+					(path.node as any).shorthand,
 					path.node.decorators
 				)
 			);
 		},
 		StringLiteral(path) {
-			if (will_skip(path) || !test(path.node.value)) return;
+			if (willSkip(path) || !test(path.node.value)) return;
 
-			path.replaceWith(append_string(path.node.value));
+			path.replaceWith(appendString(path.node.value));
 		},
 	});
 
@@ -269,16 +232,16 @@ function obfuscate(code, options_) {
 			t.expressionStatement(
 				t.callExpression(
 					t.arrowFunctionExpression(
-						[t.identifier(call_function)],
+						[t.identifier(callFunction)],
 						t.blockStatement(tree.program.body)
 					),
 					[
 						t.callExpression(
-							t.memberExpression(call_function_ast, t.identifier('bind')),
+							t.memberExpression(callFunctionAST, t.identifier('bind')),
 							[
 								t.nullLiteral(),
 								t.numericLiteral(key),
-								t.arrayExpression(strings_array),
+								t.arrayExpression(stringsArray),
 							]
 						),
 					]
@@ -287,7 +250,7 @@ function obfuscate(code, options_) {
 		]),
 		{
 			compact: options.compact,
-			...(generate_sourcemap
+			...(options.sourceMap
 				? {
 						sourceMaps: true,
 						sourceFilename: options.source,
@@ -296,5 +259,3 @@ function obfuscate(code, options_) {
 		}
 	);
 }
-
-module.exports = obfuscate;

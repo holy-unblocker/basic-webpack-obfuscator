@@ -1,29 +1,31 @@
-'use strict';
-
-const webpack = require('webpack');
-const multimatch = require('multimatch');
-const { transfer: transferSourceMap } = require('multi-stage-sourcemap');
-const obfuscate = require('./obfuscate');
+import type { Compiler } from 'webpack';
+import webpack from 'webpack';
+import { transfer } from 'multi-stage-sourcemap';
+import obfuscate from './obfuscate.js';
 
 const allowedExtensions = ['.js', '.mjs'];
 
-class BasicWebpackObfuscatorPlugin {
-	/**
-	 *
-	 * @param {{sourceMap:boolean} & import('./obfuscate.js').obfuscateOptions} options
-	 * @param {string[]} excludes
-	 */
-	constructor(options = {}, excludes) {
-		this.options = options;
-		this.excludes = [];
-		this.excludes = this.excludes.concat(excludes || []);
+export interface Options {
+	sourceMap: boolean;
+	compact: boolean;
+	salt: number;
+}
+
+export default class BasicWebpackObfuscatorPlugin {
+	options: Options;
+	constructor(options?: Partial<Options>) {
+		this.options = {
+			sourceMap: !!options?.sourceMap,
+			compact: !!options?.compact,
+			salt: options?.salt || 0,
+		};
 	}
 	/**
 	 *
 	 * @param {import('webpack').Compiler} compiler
 	 * @returns
 	 */
-	apply(compiler) {
+	apply(compiler: Compiler) {
 		const isDevServer = process.argv.join('').includes('webpack-dev-server');
 
 		if (isDevServer) {
@@ -44,12 +46,12 @@ class BasicWebpackObfuscatorPlugin {
 					const sourcemapOutput = {};
 
 					const contentHashes = [];
-					for (let chunk of compilation.chunks) {
+					for (const chunk of compilation.chunks) {
 						contentHashes.push(chunk.contentHash);
 					}
 
-					for (let chunk of compilation.chunks) {
-						for (let fileName of chunk.files) {
+					for (const chunk of compilation.chunks) {
+						for (const fileName of chunk.files) {
 							if (
 								this.options.sourceMap &&
 								fileName.toLowerCase().endsWith('.map')
@@ -58,20 +60,18 @@ class BasicWebpackObfuscatorPlugin {
 									.toLowerCase()
 									.slice(0, fileName.length - 4);
 
-								if (!this.shouldExclude(srcName)) {
-									const transferredSourceMap = transferSourceMap({
-										fromSourceMap: sourcemapOutput[srcName],
-										toSourceMap: compilation.assets[fileName].source(),
-									});
-									const finalSourcemap = JSON.parse(transferredSourceMap);
-									finalSourcemap['sourcesContent'] = JSON.parse(
-										assets[fileName].source().toString()
-									)['sourcesContent'];
-									assets[fileName] = new webpack.sources.RawSource(
-										JSON.stringify(finalSourcemap),
-										false
-									);
-								}
+								const transferredSourceMap = transfer({
+									fromSourceMap: sourcemapOutput[srcName],
+									toSourceMap: compilation.assets[fileName].source(),
+								});
+								const finalSourcemap = JSON.parse(transferredSourceMap);
+								finalSourcemap['sourcesContent'] = JSON.parse(
+									assets[fileName].source().toString()
+								)['sourcesContent'];
+								assets[fileName] = new webpack.sources.RawSource(
+									JSON.stringify(finalSourcemap),
+									false
+								);
 
 								continue;
 							}
@@ -80,9 +80,7 @@ class BasicWebpackObfuscatorPlugin {
 								fileName.toLowerCase().endsWith(extension)
 							);
 
-							if (!isValidExtension || this.shouldExclude(fileName)) {
-								continue;
-							}
+							if (!isValidExtension) continue;
 
 							const asset = compilation.assets[fileName];
 							const { inputSource, inputSourceMap } =
@@ -90,23 +88,20 @@ class BasicWebpackObfuscatorPlugin {
 
 							const { code: obfuscatedSource, map: obfuscationSourceMap } =
 								obfuscate(inputSource, {
-									...this.options,
+									sourceMap: this.options.sourceMap,
+									compact: this.options.compact,
 									source: fileName,
-									exclude: contentHashes
-										.map(hash => string => {
-											for (let key in hash) {
-												if (hash[key].includes(string)) {
-													return true;
-												}
-											}
-										})
-										.concat(this.options.exclude),
+									exclude: contentHashes.map(hash => string => {
+										for (const key in hash)
+											if (hash[key].includes(string)) return true;
+									}),
+									salt: this.options.salt,
 								});
 
 							if (this.options.sourceMap && inputSourceMap) {
 								sourcemapOutput[fileName] = obfuscationSourceMap;
 
-								const transferredSourceMap = transferSourceMap({
+								const transferredSourceMap = transfer({
 									fromSourceMap: obfuscationSourceMap,
 									toSourceMap: inputSourceMap,
 								});
@@ -132,9 +127,6 @@ class BasicWebpackObfuscatorPlugin {
 			);
 		});
 	}
-	shouldExclude(filePath) {
-		return multimatch(filePath, this.excludes).length > 0;
-	}
 	extractSourceAndSourceMap(asset) {
 		if (asset.sourceAndMap) {
 			const { source, map } = asset.sourceAndMap();
@@ -147,6 +139,3 @@ class BasicWebpackObfuscatorPlugin {
 		}
 	}
 }
-
-exports.allowedExtensions = allowedExtensions;
-exports.default = BasicWebpackObfuscatorPlugin;

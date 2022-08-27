@@ -1,27 +1,27 @@
 {
 	"name": "basic-webpack-obfuscator",
-	"main": "Plugin.js",
-	"type": "commonjs",
+	"main": "dist/Plugin.js",
+	"type": "module",
+	"scripts": {
+		"build": "tsc",
+		"build:watch": "tsc -w"
+	},
 	"dependencies": {
 		"@babel/generator": "^7.18.0",
 		"@babel/parser": "^7.18.0",
 		"@babel/traverse": "^7.18.0",
 		"@babel/types": "^7.18.0",
 		"multi-stage-sourcemap": "^0.3.1",
-		"multimatch": "^5.0.0",
-		"webpack": "^5.37.0",
-		"source-map": "^0.7.3"
+		"webpack": "^5.74.0"
 	},
 	"devDependencies": {
-		"eslint-config-prettier": "^8.5.0",
-		"husky": "^7.0.4",
-		"lint-staged": "^12.3.7",
-		"prettier": "2.6.0"
-	},
-	"lint-staged": {
-		"*.{js,json}": "prettier --write"
-	},
-	"scripts": {
-		"prepare": "husky install"
+		"@ianvs/prettier-plugin-sort-imports": "^3.4.2",
+		"@types/babel__generator": "^7.6.4",
+		"@types/babel__traverse": "^7.18.0",
+		"@typescript-eslint/eslint-plugin": "^5.35.1",
+		"@typescript-eslint/parser": "^5.35.1",
+		"eslint": "^8.21.0",
+		"prettier": "^2.7.1",
+		"typescript": "^4.7.4"
 	}
 }
