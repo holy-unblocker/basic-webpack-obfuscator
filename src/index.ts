@@ -1,9 +1,8 @@
 import obfuscate from './obfuscate.js';
 import { transfer } from 'multi-stage-sourcemap';
 import { parse } from 'path';
-import type { Compilation, Compiler } from 'webpack';
 import webpack from 'webpack';
-import type { WebpackPluginInstance } from 'webpack';
+import type { Compilation, Compiler, WebpackPluginInstance } from 'webpack';
 
 // why is this not exported in the typedefs?!
 type Source = Compilation['assets'][''];
