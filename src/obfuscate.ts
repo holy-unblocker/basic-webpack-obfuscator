@@ -290,8 +290,29 @@ export default function obfuscate(
 
 			const appent = appendString(path.node.value);
 
-			// either we add the ' ' or add cases for SwitchCase and ReturnStatement
-			magic.overwrite(path.node.start, path.node.end, ' ' + appent.code);
+			/*
+			// does not work, ineffective:
+			const padLeft = t.isSwitchCase(path.parent) ? ' ' : '';
+			const padRight = t.isReturnStatement(path.parent) ? ' ' : '';
+			*/
+
+			// lazy solution:
+			const padLeft = t.isValidIdentifier(
+				'$' + magic.slice(path.node.start - 1, path.node.start)
+			)
+				? ' '
+				: '';
+			const padRight = t.isValidIdentifier(
+				'$' + magic.slice(path.node.end, path.node.end + 1)
+			)
+				? ' '
+				: '';
+
+			magic.overwrite(
+				path.node.start,
+				path.node.end,
+				padLeft + appent.code + padRight
+			);
 
 			path.replaceWith(appent.ast)[0].skip();
 		},
