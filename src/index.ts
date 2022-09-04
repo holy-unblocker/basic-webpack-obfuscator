@@ -2,21 +2,20 @@ import obfuscate from './obfuscate.js';
 import { transfer } from 'multi-stage-sourcemap';
 import type { Compiler } from 'webpack';
 import webpack from 'webpack';
+import type { WebpackPluginInstance } from 'webpack';
 
 export const allowedExtensions = ['.js', '.mjs'];
 
 export interface Options {
 	sourceMap: boolean;
-	compact: boolean;
 	salt: number;
 }
 
-export default class BasicWebpackObfuscator {
+export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 	options: Options;
 	constructor(options?: Partial<Options>) {
 		this.options = {
 			sourceMap: !!options?.sourceMap,
-			compact: !!options?.compact,
 			salt: options?.salt || 0,
 		};
 	}
@@ -30,9 +29,12 @@ export default class BasicWebpackObfuscator {
 				(assets) => {
 					const sourcemapOutput = {};
 
-					const contentHashes = [];
+					const contentHashes = new Set<string>();
+
 					for (const chunk of compilation.chunks) {
-						contentHashes.push(chunk.contentHash);
+						for (const key in chunk.contentHash) {
+							contentHashes.add(chunk.contentHash[key]);
+						}
 					}
 
 					for (const chunk of compilation.chunks) {
@@ -74,12 +76,14 @@ export default class BasicWebpackObfuscator {
 							const { code: obfuscatedSource, map: obfuscationSourceMap } =
 								obfuscate(inputSource, {
 									sourceMap: this.options.sourceMap,
-									compact: this.options.compact,
 									source: fileName,
-									exclude: contentHashes.map((hash) => (string) => {
-										for (const key in hash)
-											if (hash[key].includes(string)) return true;
-									}),
+									exclude: (string) => {
+										for (const hash of contentHashes) {
+											if (hash.includes(string)) return true;
+										}
+
+										return false;
+									},
 									salt: this.options.salt,
 								});
 

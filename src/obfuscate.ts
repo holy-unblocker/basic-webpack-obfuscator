@@ -68,12 +68,99 @@ const callFunctionBody = (key: number) => {
 	);
 };
 
+const commonStrings = [
+	// general
+	'valueOf',
+	'toString',
+	'toLocaleString',
+	'prototype',
+	'constructor',
+	// Object
+	'preventExtensions',
+	'defineProperty',
+	'defineProperties',
+	'getOwnPropertyDescriptor',
+	'getOwnPropertyDescriptors',
+	'getOwnPropertyNames',
+	'getOwnPropertySymbols',
+	// object
+	'__proto__',
+	'__defineGetter__',
+	'__defineSetter__',
+	'__lookupGetter__',
+	'__lookupSetter__',
+	'propertyIsEnumerable',
+	'hasOwnProperty',
+	// Regex
+	'test',
+	// Map/Set
+	'get',
+	'set',
+	'add',
+	'has',
+	// function
+	'bind',
+	'call',
+	'apply',
+	'name',
+	// number
+	'toFixed',
+	// String
+	'fromCharCode',
+	'fromCodePoint',
+	// string
+	'charAt',
+	'charCodeAt',
+	'match',
+	'matchAll',
+	'padStart',
+	'padEnd',
+	'substr',
+	'substring',
+	// Array/string
+	'length',
+	'push',
+	'slice',
+	'splice',
+	'at',
+	'fill',
+	'every',
+	'some',
+	'concat',
+	'shift',
+	'unshift',
+	'reverse',
+	'copyWithin',
+	'reduce',
+	'reduceRight',
+	'map',
+	'pop',
+	'lastIndexOf',
+	'find',
+	'forEach',
+	'join',
+	'keys',
+	'entries',
+	'values',
+	'includes',
+	'indexOf',
+	// AbortController
+	'abort',
+	// Symbol
+	'iterator',
+	'toPrimitive',
+	// window
+	'document',
+	'globalThis',
+	'window',
+	'self',
+];
+
 export interface ObfuscateOptions {
 	salt: number;
-	compact: boolean;
 	source: string;
 	sourceMap?: boolean;
-	exclude: ((identifier: string) => boolean)[];
+	exclude: (identifier: string) => boolean;
 }
 
 export interface ObfuscateResult {
@@ -181,6 +268,9 @@ export default function obfuscate(
 
 		for (const [enable, offset] of commentMatches) {
 			if (enable) {
+				const loc = { start: offset };
+				skipBuilding = loc;
+			} else {
 				if (!skipBuilding) {
 					console.warn('Unmatched :disable command');
 				} else {
@@ -188,18 +278,11 @@ export default function obfuscate(
 					skipObfuscation.push(skipBuilding as SkipLoc);
 					skipBuilding = undefined;
 				}
-			} else {
-				const loc = { start: offset };
-				skipBuilding = loc;
 			}
 		}
 	}
 
-	// const obfuscatedNodes = new WeakSet<t.Node>();
-
 	const willSkip = (path: NodePath<t.Node>) => {
-		// if (obfuscatedNodes.has(path.node)) return true;
-
 		for (const loc of skipObfuscation)
 			if (
 				loc.start < path.node.start &&
@@ -211,13 +294,21 @@ export default function obfuscate(
 		return false;
 	};
 
-	const test = (identifier: string) => {
-		for (const test of options.exclude) {
-			if (test(identifier)) return false;
-		}
-
-		return true;
-	};
+	/**
+	 * What happens is anything less than 6 characters ends up taking more bytes to obfuscate
+	 * 'test'
+	 * ʘẅ(0, 4)
+	 *
+	 * 4 characters being ʘẅ(...)
+	 *
+	 * 6 characters is perfect:
+	 * 'test12'
+	 * ʘẅ(0, 6)
+	 */
+	const willSkipString = (string: string) =>
+		string.length < 6 ||
+		commonStrings.includes(string) ||
+		(options.exclude && options.exclude(string));
 
 	const objProp = (path: NodePath<t.ObjectProperty | t.ObjectMethod>) => {
 		if (willSkip(path)) return;
@@ -234,7 +325,7 @@ export default function obfuscate(
 			pos = [path.node.key.start, path.node.key.end];
 		}
 
-		if (key === undefined || pos === undefined || !test(key)) return;
+		if (key === undefined || pos === undefined || willSkipString(key)) return;
 
 		const appent = appendString(key);
 
@@ -249,16 +340,6 @@ export default function obfuscate(
 			magic.appendRight(pos[1], ': ' + (path.node.value as t.Identifier).name);
 
 		magic.overwrite(pos[0], pos[1], appent.code);
-
-		// console.log(magic.slice(pos[0] - 10, pos[1] + 10));
-
-		/*const ast = t.objectProperty(
-			appent.ast,
-			path.node.value,
-			true,
-			(path.node as any).shorthand,
-			path.node.decorators
-		);*/
 
 		if (t.isObjectProperty(path.node)) path.node.shorthand = false;
 		path.node.computed = true;
@@ -280,18 +361,23 @@ export default function obfuscate(
 			// obj.'string literal...'
 			// only indentifier
 			// if it was string literal then the appropiate visitor will take ffect
-			if (t.isIdentifier(path.node.property) && !path.node.computed) {
-				const appent = appendString(path.node.property.name);
+			if (
+				!t.isIdentifier(path.node.property) ||
+				path.node.computed ||
+				willSkipString(path.node.property.name)
+			)
+				return;
 
-				magic.overwrite(
-					path.node.property.start - 1, // the . in non-computed property access
-					path.node.property.end,
-					`[${appent.code}]`
-				);
+			const appent = appendString(path.node.property.name);
 
-				path.node.computed = true;
-				path.node.property = appent.ast;
-			}
+			magic.overwrite(
+				path.node.property.start - 1, // the . in non-computed property access
+				path.node.property.end,
+				`[${appent.code}]`
+			);
+
+			path.node.computed = true;
+			path.node.property = appent.ast;
 		},
 		ClassMethod(path) {
 			if (willSkip(path)) return;
@@ -314,7 +400,7 @@ export default function obfuscate(
 				key === undefined ||
 				pos === undefined ||
 				key === 'constructor' ||
-				!test(key)
+				willSkipString(key)
 			)
 				return;
 
@@ -351,7 +437,7 @@ export default function obfuscate(
 			objProp(path);
 		},
 		StringLiteral(path) {
-			if (willSkip(path) || !test(path.node.value)) return;
+			if (willSkip(path) || willSkipString(path.node.value)) return;
 
 			const appent = appendString(path.node.value);
 
@@ -384,41 +470,53 @@ export default function obfuscate(
 	});
 
 	for (const node of templateLiterals) {
-		const quasis: t.TemplateElement[] = [];
-		const expressions: t.Expression[] = [];
+		const quasises: t.TemplateElement[] = [];
+		const expressions: (t.TSType | t.Expression)[] = [];
 
-		const nodeExpressions: t.Expression[] = [
-			...(node.expressions as t.Expression[]),
-		];
+		for (let i = 0; i < node.quasis.length; i++) {
+			const quasis = node.quasis[i];
+			// for every quasis, there's an expression UNLESS ITS THE TAIL
+			const expression = node.expressions[i];
 
-		for (const element of node.quasis) {
-			if (element.value.raw) {
-				if (test(element.value.raw)) {
-					expressions.push(appendString(element.value.raw).ast);
-					quasis.push(t.templateElement({ raw: '' }, false));
+			// if (quasis.value.raw) {
+			if (willSkipString(quasis.value.raw)) {
+				quasises.push(quasis);
+				if (!quasis.tail) expressions.push(expression);
+			} else {
+				expressions.push(appendString(quasis.value.raw).ast);
+				quasises.push(t.templateElement({ raw: '' }, quasis.tail));
+
+				if (quasis.tail) {
+					quasises.push(t.templateElement({ raw: '' }, true));
 				} else {
-					quasis.push(t.templateElement({ raw: element.value.raw }, false));
+					quasises.push(t.templateElement({ raw: '' }, false));
+					expressions.push(expression);
 				}
 			}
+			// }
 
-			if (!element.tail) {
+			// false if .tail === true
+
+			/*if (!element.tail) {
 				expressions.push(nodeExpressions.shift());
 				quasis.push(t.templateElement({ raw: '' }, false));
-			}
+			}*/
 		}
 
-		quasis.push(t.templateElement({ raw: '' }, true));
+		// quasis.push(t.templateElement({ raw: '' }, true));
 
 		// dont skip the entire node and children
 		// keep children but dont re-process replaced node
 		// path.skip()
 
-		const ast = t.templateLiteral(quasis, expressions);
-
-		// obfuscatedNodes.add(ast);
+		const ast = t.templateLiteral(quasises, expressions);
 
 		magic.overwrite(node.start, node.end, generate(ast).code);
 
+		/*} catch (err) {
+			console.error('struggling to do', generate(node).code);
+			console.error(err);
+		}*/
 		// path.replaceWith(ast);
 	}
 
@@ -426,7 +524,7 @@ export default function obfuscate(
 	magic.appendLeft(0, `"use strict";(${callFunction}=>{`);
 	// babel's generator can escape the string for us
 	magic.append(
-		`})(${callFunctionBody(key)}(${
+		`\n})(${callFunctionBody(key)}(${
 			generate(t.stringLiteral(stringsDump)).code
 		}))`
 	);
