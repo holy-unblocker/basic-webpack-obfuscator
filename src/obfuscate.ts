@@ -13,21 +13,6 @@ const traverse = (traverseMod as unknown as { default: typeof traverseMod })
 const generate = (generateMod as unknown as { default: typeof generateMod })
 	.default;
 
-/**
- * Converts string to JavaScript string wrapped in quotes
- */
-function escapeString(string: string) {
-	let result = '';
-
-	for (let i = 0; i < string.length; i++) {
-		const char = string.charCodeAt(i);
-
-		result += '\\u' + char.toString(16).padStart(4, '0');
-	}
-
-	return '"' + result + '"';
-}
-
 function transformString(input: string, key: number) {
 	const xor = key >> 0x4;
 	const frequency = key & 0xf;
@@ -45,26 +30,43 @@ function transformString(input: string, key: number) {
 	return output;
 }
 
-const callFunction = `__BWOC_CALLBACK__`;
+const varManager = () => {
+	const vars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$'.split(
+		''
+	);
+	const cache = new Map<string, string>();
 
-const callFunctionBody = `((key, dump) => (start, end) => {
-	const input = dump.slice(start, end);
-	
-	const xor = key >> 0x4;
-	const frequency = key & 0xf;
+	const allocate = () => {
+		if (!vars.length) throw new Error('No var');
+		const varI = ~~(Math.random() * vars.length);
+		const result = vars[varI];
+		vars.splice(varI, 1);
+		return result;
+	};
 
-	let output = '';
+	return (name: string) => {
+		if (!cache.has(name)) cache.set(name, allocate());
+		return cache.get(name);
+	};
+};
 
-	for (let i = 0; i < input.length; i++) {
-		if (i % frequency === 0) {
-			output += String.fromCharCode(input[i].charCodeAt() ^ xor);
-		} else {
-			output += input[i];
-		}
-	}
+const callFunctionBody = (key: number) => {
+	const V = varManager();
 
-	return output;
-})`;
+	return (
+		`(${V('dump')}=>(${V('start')},${V('end')})=>{` +
+		`const ${V('input')}=${V('dump')}.slice(${V('start')},${V('end')});` +
+		`let ${V('output')}='',${V('i1')}=0;` +
+		`for(;${V('i1')}<${V('input')}.length;${V('i1')}++)` +
+		`${V('output')}+=${V('i1')}%${key & 0xf}===0` +
+		`?String.fromCharCode(${V('input')}[${V('i1')}].charCodeAt()^${
+			key >> 0x4
+		})` +
+		`:${V('input')}[${V('i1')}];` +
+		`return ${V('output')}` +
+		`})`
+	);
+};
 
 export interface ObfuscateOptions {
 	salt: number;
@@ -121,6 +123,8 @@ export default function obfuscate(
 	let stringsDump = '';
 	let stringDumpPos = 0;
 
+	const callFunction = `$bwo`;
+
 	function appendString(string: string) {
 		if (!strings.has(string)) {
 			const transformed = transformString(string, key);
@@ -139,9 +143,7 @@ export default function obfuscate(
 				t.numericLiteral(got.start),
 				t.numericLiteral(got.end),
 			]),
-			code: `/*#__PURE__*/ ${callFunction}(${JSON.stringify(
-				got.start
-			)},${JSON.stringify(got.end)})`,
+			code: `${callFunction}(${got.start},${got.end})`,
 		};
 	}
 
@@ -268,42 +270,27 @@ export default function obfuscate(
 
 			// console.log(magic.slice(pos[0] - 10, pos[1] + 10));
 
-			const ast = t.objectProperty(
+			/*const ast = t.objectProperty(
 				appent.ast,
 				path.node.value,
 				true,
 				(path.node as any).shorthand,
 				path.node.decorators
-			);
+			);*/
 
-			path.replaceWith(ast)[0].skip();
-		},
-		SwitchCase(path) {
-			if (willSkip(path)) return;
+			path.node.shorthand = false;
+			path.node.computed = true;
+			path.node.key = appent.ast;
 
-			if (t.isStringLiteral(path.node.test)) {
-				const appent = appendString(path.node.test.value);
-
-				// the only CASE where there is no space between a call expression and "case"
-				// case"test":
-				// case__BWOC...!!
-
-				magic.overwrite(
-					path.node.test.start,
-					path.node.test.end,
-					' ' + appent.code
-				);
-
-				path.node.test = appent.ast;
-
-				path.skip();
-			}
+			// cannot skip!
+			// path.replaceWith(ast)[0].skip();
 		},
 		StringLiteral(path) {
 			if (willSkip(path) || !test(path.node.value)) return;
 
 			const appent = appendString(path.node.value);
 
+			// either we add the ' ' or add cases for SwitchCase and ReturnStatement
 			magic.overwrite(path.node.start, path.node.end, ' ' + appent.code);
 
 			path.replaceWith(appent.ast)[0].skip();
@@ -350,12 +337,12 @@ export default function obfuscate(
 	}
 
 	magic.replace(/^"use strict";/, '');
-
 	magic.appendLeft(0, `"use strict";(${callFunction}=>{\n`);
+	// babel's generator can escape the string for us
 	magic.append(
-		`})(${callFunctionBody}(${JSON.stringify(key)},${escapeString(
-			stringsDump
-		)}))`
+		`})(${callFunctionBody(key)}(${
+			generate(t.stringLiteral(stringsDump)).code
+		}))`
 	);
 
 	return {
