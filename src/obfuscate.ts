@@ -57,23 +57,8 @@ export interface ObfuscateOptions {
 
 export interface ObfuscateResult {
 	code: string;
-	map?: SourceMap;
+	map: SourceMap;
 }
-
-export default function obfuscate(
-	code: string,
-	options?: Omit<ObfuscateOptions, 'source'>
-): Omit<ObfuscateResult, 'map'>;
-
-export default function obfuscate(
-	code: string,
-	options: Omit<ObfuscateOptions, 'source'> & { source: string }
-): Omit<ObfuscateResult, 'map'> & { map: SourceMap };
-
-export default function obfuscate(
-	code: string,
-	options?: ObfuscateOptions
-): ObfuscateResult;
 
 export default function obfuscate(
 	code: string,
@@ -140,56 +125,6 @@ export default function obfuscate(
 	const { [call()]: test } =
 	*/
 
-	interface SkipLoc {
-		start: number;
-		end: number;
-	}
-
-	const skipObfuscation: SkipLoc[] = [];
-
-	{
-		const commentMatches: [enable: boolean, offset: number][] = [];
-
-		code.replace(/obfuscation:enable/g, (match, offset: number) => {
-			commentMatches.push([true, offset]);
-			return '';
-		});
-
-		code.replace(/obfuscation:disable/g, (match, offset: number) => {
-			commentMatches.push([false, offset]);
-			return '';
-		});
-
-		let skipBuilding: Partial<SkipLoc> | undefined;
-
-		for (const [enable, offset] of commentMatches) {
-			if (enable) {
-				const loc = { start: offset };
-				skipBuilding = loc;
-			} else {
-				if (!skipBuilding) {
-					console.warn('Unmatched :disable command');
-				} else {
-					skipBuilding.end = offset;
-					skipObfuscation.push(skipBuilding as SkipLoc);
-					skipBuilding = undefined;
-				}
-			}
-		}
-	}
-
-	const willSkip = (path: NodePath<t.Node>) => {
-		for (const loc of skipObfuscation)
-			if (
-				loc.start < path.node.start &&
-				'end' in loc &&
-				loc.end > path.node.start
-			)
-				return true;
-
-		return false;
-	};
-
 	/**
 	 * What happens is anything less than 6 characters ends up taking more bytes to obfuscate
 	 * 'test'
@@ -207,8 +142,6 @@ export default function obfuscate(
 		(options.exclude && options.exclude(string));
 
 	const objProp = (path: NodePath<t.ObjectProperty | t.ObjectMethod>) => {
-		if (willSkip(path)) return;
-
 		let key: string | undefined;
 
 		let pos: [number, number] | undefined;
@@ -249,8 +182,6 @@ export default function obfuscate(
 
 	traverse(tree, {
 		TemplateLiteral(path) {
-			if (willSkip(path)) return;
-
 			templateLiterals.push(path.node);
 		},
 		MemberExpression(path) {
@@ -276,8 +207,6 @@ export default function obfuscate(
 			path.node.property = appent.ast;
 		},
 		ClassMethod(path) {
-			if (willSkip(path)) return;
-
 			let key: string | undefined;
 
 			let pos: [number, number] | undefined;
@@ -333,7 +262,7 @@ export default function obfuscate(
 			objProp(path);
 		},
 		StringLiteral(path) {
-			if (willSkip(path) || willSkipString(path.node.value)) return;
+			if (willSkipString(path.node.value)) return;
 
 			const appent = appendString(path.node.value);
 
@@ -426,11 +355,13 @@ export default function obfuscate(
 	);
 
 	return {
-		map:
-			typeof options.source === 'string' &&
-			magic.generateMap({
-				source: options.source,
-			}),
+		map: magic.generateMap(
+			typeof options.source === 'string'
+				? {
+						source: options.source,
+				  }
+				: {}
+		),
 		code: magic.toString(),
 	};
 }
