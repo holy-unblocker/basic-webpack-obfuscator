@@ -123,9 +123,9 @@ export default function obfuscate(
 	let stringsDump = '';
 	let stringDumpPos = 0;
 
-	const callFunction = `$bwo`;
+	const callFunction = `ʘẅ`;
 
-	function appendString(string: string) {
+	const appendString = (string: string) => {
 		if (!strings.has(string)) {
 			const transformed = transformString(string, key);
 			strings.set(string, {
@@ -145,7 +145,7 @@ export default function obfuscate(
 			]),
 			code: `${callFunction}(${got.start},${got.end})`,
 		};
-	}
+	};
 
 	/*
 	`${x}str`
@@ -197,7 +197,7 @@ export default function obfuscate(
 
 	// const obfuscatedNodes = new WeakSet<t.Node>();
 
-	function willSkip(path: NodePath<t.Node>) {
+	const willSkip = (path: NodePath<t.Node>) => {
 		// if (obfuscatedNodes.has(path.node)) return true;
 
 		for (const loc of skipObfuscation)
@@ -209,17 +209,15 @@ export default function obfuscate(
 				return true;
 
 		return false;
-	}
+	};
 
-	const templateLiterals: t.TemplateLiteral[] = [];
-
-	function test(identifier: string) {
+	const test = (identifier: string) => {
 		for (const test of options.exclude) {
 			if (test(identifier)) return false;
 		}
 
 		return true;
-	}
+	};
 
 	const objProp = (path: NodePath<t.ObjectProperty | t.ObjectMethod>) => {
 		if (willSkip(path)) return;
@@ -270,11 +268,30 @@ export default function obfuscate(
 		// path.replaceWith(ast)[0].skip();
 	};
 
+	const templateLiterals: t.TemplateLiteral[] = [];
+
 	traverse(tree, {
 		TemplateLiteral(path) {
 			if (willSkip(path)) return;
 
 			templateLiterals.push(path.node);
+		},
+		MemberExpression(path) {
+			// obj.'string literal...'
+			// only indentifier
+			// if it was string literal then the appropiate visitor will take ffect
+			if (t.isIdentifier(path.node.property) && !path.node.computed) {
+				const appent = appendString(path.node.property.name);
+
+				magic.overwrite(
+					path.node.property.start - 1, // the . in non-computed property access
+					path.node.property.end,
+					`[${appent.code}]`
+				);
+
+				path.node.computed = true;
+				path.node.property = appent.ast;
+			}
 		},
 		ClassMethod(path) {
 			if (willSkip(path)) return;
@@ -346,12 +363,12 @@ export default function obfuscate(
 
 			// lazy solution:
 			const padLeft = t.isValidIdentifier(
-				'$' + magic.slice(path.node.start - 1, path.node.start)
+				'$' + code.slice(path.node.start - 1, path.node.start)
 			)
 				? ' '
 				: '';
 			const padRight = t.isValidIdentifier(
-				'$' + magic.slice(path.node.end, path.node.end + 1)
+				'$' + code.slice(path.node.end, path.node.end + 1)
 			)
 				? ' '
 				: '';
