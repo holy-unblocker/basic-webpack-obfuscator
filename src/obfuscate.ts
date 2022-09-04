@@ -221,20 +221,62 @@ export default function obfuscate(
 		return true;
 	}
 
+	const objProp = (path: NodePath<t.ObjectProperty | t.ObjectMethod>) => {
+		if (willSkip(path)) return;
+
+		let key: string | undefined;
+
+		let pos: [number, number] | undefined;
+
+		if (t.isIdentifier(path.node.key) && !path.node.computed) {
+			key = path.node.key.name;
+			pos = [path.node.key.start, path.node.key.end];
+		} else if (t.isStringLiteral(path.node.key)) {
+			key = path.node.key.value;
+			pos = [path.node.key.start, path.node.key.end];
+		}
+
+		if (key === undefined || pos === undefined || !test(key)) return;
+
+		const appent = appendString(key);
+
+		//  || path.node.method
+		if (!path.node.computed) {
+			// fake computed
+			magic.appendLeft(pos[0], '[');
+			magic.appendRight(pos[1], ']');
+		}
+
+		if (t.isObjectProperty(path.node) && path.node.shorthand)
+			magic.appendRight(pos[1], ': ' + (path.node.value as t.Identifier).name);
+
+		magic.overwrite(pos[0], pos[1], appent.code);
+
+		// console.log(magic.slice(pos[0] - 10, pos[1] + 10));
+
+		/*const ast = t.objectProperty(
+			appent.ast,
+			path.node.value,
+			true,
+			(path.node as any).shorthand,
+			path.node.decorators
+		);*/
+
+		if (t.isObjectProperty(path.node)) path.node.shorthand = false;
+		path.node.computed = true;
+		path.node.key = appent.ast;
+
+		// cannot skip!
+		// path.replaceWith(ast)[0].skip();
+	};
+
 	traverse(tree, {
-		/*ImportDeclaration: traverseSkip,
-		ExportDeclaration: traverseSkip,
-		ExportAllDeclaration: traverseSkip,
-		ExportDefaultDeclaration: traverseSkip,
-		CallExpression(path) {
-			if (t.isImport(path.node.callee)) path.skip();
-		},*/
 		TemplateLiteral(path) {
 			if (willSkip(path)) return;
 
 			templateLiterals.push(path.node);
 		},
-		ObjectProperty(path) {
+		ClassMethod(path) {
 			if (willSkip(path)) return;
 
 			let key: string | undefined;
@@ -249,7 +291,15 @@ export default function obfuscate(
 				pos = [path.node.key.start, path.node.key.end];
 			}
 
-			if (key === undefined || pos === undefined || !test(key)) return;
+			// weird! constructor has to be an identifier or it simply isn't called
+			// (new(class{['cons' + 'tructor'](){ this.test = 1; }})).test
+			if (
+				key === undefined ||
+				pos === undefined ||
+				key === 'constructor' ||
+				!test(key)
+			)
+				return;
 
 			const appent = appendString(key);
 
@@ -257,13 +307,6 @@ export default function obfuscate(
 				// fake computed
 				magic.appendLeft(pos[0], '[');
 				magic.appendRight(pos[1], ']');
-			}
-
-			if (path.node.shorthand) {
-				magic.appendRight(
-					pos[1],
-					': ' + (path.node.value as t.Identifier).name
-				);
 			}
 
 			magic.overwrite(pos[0], pos[1], appent.code);
@@ -278,12 +321,17 @@ export default function obfuscate(
 				path.node.decorators
 			);*/
 
-			path.node.shorthand = false;
 			path.node.computed = true;
 			path.node.key = appent.ast;
 
 			// cannot skip!
 			// path.replaceWith(ast)[0].skip();
+		},
+		ObjectProperty(path) {
+			objProp(path);
+		},
+		ObjectMethod(path) {
+			objProp(path);
 		},
 		StringLiteral(path) {
 			if (willSkip(path) || !test(path.node.value)) return;
