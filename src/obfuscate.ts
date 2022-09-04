@@ -423,7 +423,7 @@ export default function obfuscate(
 	}
 
 	magic.replace(/^"use strict";/, '');
-	magic.appendLeft(0, `"use strict";(${callFunction}=>{\n`);
+	magic.appendLeft(0, `"use strict";(${callFunction}=>{`);
 	// babel's generator can escape the string for us
 	magic.append(
 		`})(${callFunctionBody(key)}(${
