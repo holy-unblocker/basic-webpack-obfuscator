@@ -1,4 +1,5 @@
 // babel sucks! Property.shorthand is missing in the typedefs, traverse module is incorrectly typed (it isn't a __esModule but they export using `module.export.default = traverse;`, so annoying!)
+import { commonStrings, varManager } from './util.js';
 import generateMod from '@babel/generator';
 import { parse } from '@babel/parser';
 import type { NodePath } from '@babel/traverse';
@@ -13,7 +14,7 @@ const traverse = (traverseMod as unknown as { default: typeof traverseMod })
 const generate = (generateMod as unknown as { default: typeof generateMod })
 	.default;
 
-function transformString(input: string, key: number) {
+const transformString = (input: string, key: number) => {
 	const xor = key >> 0x4;
 	const frequency = key & 0xf;
 
@@ -28,26 +29,6 @@ function transformString(input: string, key: number) {
 	}
 
 	return output;
-}
-
-const varManager = () => {
-	const vars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_$'.split(
-		''
-	);
-	const cache = new Map<string, string>();
-
-	const allocate = () => {
-		if (!vars.length) throw new Error('No var');
-		const varI = ~~(Math.random() * vars.length);
-		const result = vars[varI];
-		vars.splice(varI, 1);
-		return result;
-	};
-
-	return (name: string) => {
-		if (!cache.has(name)) cache.set(name, allocate());
-		return cache.get(name);
-	};
 };
 
 const callFunctionBody = (key: number) => {
@@ -68,99 +49,10 @@ const callFunctionBody = (key: number) => {
 	);
 };
 
-const commonStrings = [
-	// general
-	'valueOf',
-	'toString',
-	'toLocaleString',
-	'prototype',
-	'constructor',
-	// Object
-	'preventExtensions',
-	'defineProperty',
-	'defineProperties',
-	'getOwnPropertyDescriptor',
-	'getOwnPropertyDescriptors',
-	'getOwnPropertyNames',
-	'getOwnPropertySymbols',
-	// object
-	'__proto__',
-	'__defineGetter__',
-	'__defineSetter__',
-	'__lookupGetter__',
-	'__lookupSetter__',
-	'propertyIsEnumerable',
-	'hasOwnProperty',
-	// Regex
-	'test',
-	// Map/Set
-	'get',
-	'set',
-	'add',
-	'has',
-	// function
-	'bind',
-	'call',
-	'apply',
-	'name',
-	// number
-	'toFixed',
-	// String
-	'fromCharCode',
-	'fromCodePoint',
-	// string
-	'charAt',
-	'charCodeAt',
-	'match',
-	'matchAll',
-	'padStart',
-	'padEnd',
-	'substr',
-	'substring',
-	// Array/string
-	'length',
-	'push',
-	'slice',
-	'splice',
-	'at',
-	'fill',
-	'every',
-	'some',
-	'concat',
-	'shift',
-	'unshift',
-	'reverse',
-	'copyWithin',
-	'reduce',
-	'reduceRight',
-	'map',
-	'pop',
-	'lastIndexOf',
-	'find',
-	'forEach',
-	'join',
-	'keys',
-	'entries',
-	'values',
-	'includes',
-	'indexOf',
-	// AbortController
-	'abort',
-	// Symbol
-	'iterator',
-	'toPrimitive',
-	// window
-	'document',
-	'globalThis',
-	'window',
-	'self',
-];
-
 export interface ObfuscateOptions {
-	salt: number;
-	source: string;
-	sourceMap?: boolean;
-	exclude: (identifier: string) => boolean;
+	salt?: number;
+	source?: string | false;
+	exclude?: (identifier: string) => boolean;
 }
 
 export interface ObfuscateResult {
@@ -170,24 +62,26 @@ export interface ObfuscateResult {
 
 export default function obfuscate(
 	code: string,
-	options: { sourceMap: false } & ObfuscateOptions
+	options?: Omit<ObfuscateOptions, 'source'>
 ): Omit<ObfuscateResult, 'map'>;
 
 export default function obfuscate(
 	code: string,
-	options: { sourceMap: true } & ObfuscateOptions
-): ObfuscateResult & { map: SourceMap };
+	options: Omit<ObfuscateOptions, 'source'> & { source: string }
+): Omit<ObfuscateResult, 'map'> & { map: SourceMap };
 
 export default function obfuscate(
 	code: string,
-	options: ObfuscateOptions
+	options?: ObfuscateOptions
 ): ObfuscateResult;
 
 export default function obfuscate(
 	code: string,
-	options: ObfuscateOptions
+	options: ObfuscateOptions = {}
 ): ObfuscateResult {
-	const badKey = 0xfff + (options.salt % 0xfff);
+	const goodSalt = isNaN(options.salt) ? 0 : options.salt;
+
+	const badKey = 0xfff + (goodSalt % 0xfff);
 	const xor = badKey >> 0x4;
 	// 2-3
 	const frequency = ((badKey & 0xf) % 2) + 2;
@@ -203,7 +97,9 @@ export default function obfuscate(
 		allowImportExportEverywhere: true,
 		allowReturnOutsideFunction: true,
 		attachComment: false,
-		...(options.sourceMap ? { sourceFilename: options.source } : {}),
+		...(typeof options.source === 'string'
+			? { sourceFilename: options.source }
+			: {}),
 	});
 
 	const strings = new Map<string, { start: number; end: number }>();
@@ -531,7 +427,7 @@ export default function obfuscate(
 
 	return {
 		map:
-			options.sourceMap &&
+			typeof options.source === 'string' &&
 			magic.generateMap({
 				source: options.source,
 			}),

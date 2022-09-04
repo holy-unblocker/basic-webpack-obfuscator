@@ -1,15 +1,20 @@
 {
 	"name": "basic-webpack-obfuscator",
-	"main": "dist/index.js",
 	"version": "1.0.1",
 	"license": "GPLv3",
 	"repository": {
 		"type": "git",
 		"url": "https://git.holy.how/holy/basic-webpack-obfuscator.git"
 	},
+	"exports": {
+		".": "./dist/index.js",
+		"./obfuscate": "./dist/obfuscate.js"
+	},
 	"type": "module",
 	"files": [
-		"dist"
+		"dist",
+		"index.d.ts",
+		"obfuscate.d.ts"
 	],
 	"scripts": {
 		"build": "tsc",
@@ -27,9 +32,9 @@
 	"devDependencies": {
 		"@ianvs/prettier-plugin-sort-imports": "^3.4.2",
 		"@types/babel__generator": "^7.6.4",
-		"@types/babel__traverse": "^7.18.0",
-		"@typescript-eslint/eslint-plugin": "^5.35.1",
-		"@typescript-eslint/parser": "^5.35.1",
+		"@types/babel__traverse": "^7.18.1",
+		"@typescript-eslint/eslint-plugin": "^5.36.1",
+		"@typescript-eslint/parser": "^5.36.1",
 		"eslint": "^8.21.0",
 		"prettier": "^2.7.1",
 		"typescript": "^4.7.4"

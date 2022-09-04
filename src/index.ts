@@ -1,22 +1,48 @@
 import obfuscate from './obfuscate.js';
 import { transfer } from 'multi-stage-sourcemap';
-import type { Compiler } from 'webpack';
+import { parse } from 'path';
+import type { Compilation, Compiler } from 'webpack';
 import webpack from 'webpack';
 import type { WebpackPluginInstance } from 'webpack';
 
-export const allowedExtensions = ['.js', '.mjs'];
+// why is this not exported in the typedefs?!
+type Source = Compilation['assets'][''];
 
 export interface Options {
+	/**
+	 * If sourcemaps should be produced.
+	 */
+	sourceMap?: boolean;
+	/**
+	 * A salt that is used to derive the XOR keys.
+	 */
+	salt?: number;
+	/**
+	 * Allowed file extensions, each starting with a period.
+	 * @default ['.js', '.mjs']
+	 */
+	allowedExtensions?: string[];
+}
+
+interface NormalizedOptions {
 	sourceMap: boolean;
 	salt: number;
+	allowedExtensions: string[];
 }
 
 export default class BasicWebpackObfuscator implements WebpackPluginInstance {
-	options: Options;
-	constructor(options?: Partial<Options>) {
+	private options: NormalizedOptions;
+	constructor(options: Options = {}) {
 		this.options = {
-			sourceMap: !!options?.sourceMap,
-			salt: options?.salt || 0,
+			sourceMap: !!options.sourceMap,
+			salt: isNaN(options.salt) ? 0 : options.salt,
+			allowedExtensions:
+				Array.isArray(options.allowedExtensions) &&
+				options.allowedExtensions.every(
+					(value) => typeof value === 'string' && value.startsWith('.')
+				)
+					? options.allowedExtensions
+					: ['.js', '.mjs'],
 		};
 	}
 	apply(compiler: Compiler) {
@@ -31,11 +57,9 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 
 					const contentHashes = new Set<string>();
 
-					for (const chunk of compilation.chunks) {
-						for (const key in chunk.contentHash) {
+					for (const chunk of compilation.chunks)
+						for (const key in chunk.contentHash)
 							contentHashes.add(chunk.contentHash[key]);
-						}
-					}
 
 					for (const chunk of compilation.chunks) {
 						for (const fileName of chunk.files) {
@@ -51,10 +75,13 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 									fromSourceMap: sourcemapOutput[srcName],
 									toSourceMap: compilation.assets[fileName].source().toString(),
 								});
+
 								const finalSourcemap = JSON.parse(transferredSourceMap);
+
 								finalSourcemap['sourcesContent'] = JSON.parse(
 									assets[fileName].source().toString()
 								)['sourcesContent'];
+
 								assets[fileName] = new webpack.sources.RawSource(
 									JSON.stringify(finalSourcemap),
 									false
@@ -63,20 +90,16 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 								continue;
 							}
 
-							const isValidExtension = allowedExtensions.some((extension) =>
-								fileName.toLowerCase().endsWith(extension)
-							);
-
-							if (!isValidExtension) continue;
+							if (!this.options.allowedExtensions.includes(parse(fileName).ext))
+								continue;
 
 							const asset = compilation.assets[fileName];
 							const { inputSource, inputSourceMap } =
 								this.extractSourceAndSourceMap(asset);
 
 							const { code: obfuscatedSource, map: obfuscationSourceMap } =
-								obfuscate(inputSource, {
-									sourceMap: this.options.sourceMap,
-									source: fileName,
+								obfuscate(inputSource.toString(), {
+									source: this.options.sourceMap && fileName,
 									exclude: (string) => {
 										for (const hash of contentHashes) {
 											if (hash.includes(string)) return true;
@@ -92,7 +115,7 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 
 								const transferredSourceMap = transfer({
 									fromSourceMap: JSON.stringify(obfuscationSourceMap),
-									toSourceMap: inputSourceMap,
+									toSourceMap: JSON.stringify(inputSourceMap),
 								});
 
 								const finalSourcemap = JSON.parse(transferredSourceMap);
@@ -116,7 +139,7 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 			);
 		});
 	}
-	extractSourceAndSourceMap(asset) {
+	private extractSourceAndSourceMap(asset: Source) {
 		if (asset.sourceAndMap) {
 			const { source, map } = asset.sourceAndMap();
 			return { inputSource: source, inputSourceMap: map };
