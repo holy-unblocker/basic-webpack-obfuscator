@@ -1,7 +1,7 @@
+import obfuscate from './obfuscate.js';
+import { transfer } from 'multi-stage-sourcemap';
 import type { Compiler } from 'webpack';
 import webpack from 'webpack';
-import { transfer } from 'multi-stage-sourcemap';
-import obfuscate from './obfuscate.js';
 
 export const allowedExtensions = ['.js', '.mjs'];
 
@@ -21,13 +21,13 @@ export default class BasicWebpackObfuscator {
 		};
 	}
 	apply(compiler: Compiler) {
-		compiler.hooks.compilation.tap('BasicWebpackObfuscator', compilation => {
+		compiler.hooks.compilation.tap('BasicWebpackObfuscator', (compilation) => {
 			compilation.hooks.processAssets.tap(
 				{
 					name: 'BasicWebpackObfuscator',
 					stage: webpack.Compilation.PROCESS_ASSETS_STAGE_DEV_TOOLING,
 				},
-				assets => {
+				(assets) => {
 					const sourcemapOutput = {};
 
 					const contentHashes = [];
@@ -61,7 +61,7 @@ export default class BasicWebpackObfuscator {
 								continue;
 							}
 
-							const isValidExtension = allowedExtensions.some(extension =>
+							const isValidExtension = allowedExtensions.some((extension) =>
 								fileName.toLowerCase().endsWith(extension)
 							);
 
@@ -76,7 +76,7 @@ export default class BasicWebpackObfuscator {
 									sourceMap: this.options.sourceMap,
 									compact: this.options.compact,
 									source: fileName,
-									exclude: contentHashes.map(hash => string => {
+									exclude: contentHashes.map((hash) => (string) => {
 										for (const key in hash)
 											if (hash[key].includes(string)) return true;
 									}),
