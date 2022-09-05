@@ -2,7 +2,7 @@
 import { commonStrings, varManager } from './util.js';
 import generateMod from '@babel/generator';
 import { parse } from '@babel/parser';
-import type { NodePath } from '@babel/traverse';
+import type { NodePath, Visitor } from '@babel/traverse';
 import traverseMod from '@babel/traverse';
 import * as t from '@babel/types';
 import MagicString from 'magic-string';
@@ -141,7 +141,10 @@ export default function obfuscate(
 		commonStrings.includes(string) ||
 		(options.exclude && options.exclude(string));
 
-	const objProp = (path: NodePath<t.ObjectProperty | t.ObjectMethod>) => {
+	const objProp = (
+		canMagic: boolean,
+		path: NodePath<t.ObjectProperty | t.ObjectMethod>
+	) => {
 		let key: string | undefined;
 
 		let pos: [number, number] | undefined;
@@ -158,17 +161,21 @@ export default function obfuscate(
 
 		const appent = appendString(key);
 
-		//  || path.node.method
-		if (!path.node.computed) {
-			// fake computed
-			magic.appendLeft(pos[0], '[');
-			magic.appendRight(pos[1], ']');
+		if (canMagic) {
+			if (!path.node.computed) {
+				// fake computed
+				magic.appendLeft(pos[0], '[');
+				magic.appendRight(pos[1], ']');
+			}
+
+			if (t.isObjectProperty(path.node) && path.node.shorthand)
+				magic.appendRight(
+					pos[1],
+					': ' + (path.node.value as t.Identifier).name
+				);
+
+			magic.overwrite(pos[0], pos[1], appent.code);
 		}
-
-		if (t.isObjectProperty(path.node) && path.node.shorthand)
-			magic.appendRight(pos[1], ': ' + (path.node.value as t.Identifier).name);
-
-		magic.overwrite(pos[0], pos[1], appent.code);
 
 		if (t.isObjectProperty(path.node)) path.node.shorthand = false;
 		path.node.computed = true;
@@ -178,11 +185,64 @@ export default function obfuscate(
 		// path.replaceWith(ast)[0].skip();
 	};
 
-	const templateLiterals: t.TemplateLiteral[] = [];
-
-	traverse(tree, {
+	const createVisitors = (canMagic: boolean): Visitor => ({
 		TemplateLiteral(path) {
-			templateLiterals.push(path.node);
+			const quasises: t.TemplateElement[] = [];
+			const expressions: (t.TSType | t.Expression)[] = [];
+
+			for (let i = 0; i < path.node.quasis.length; i++) {
+				const quasis = path.node.quasis[i];
+				// for every quasis, there's an expression UNLESS ITS THE TAIL
+				const expression = path.node.expressions[i];
+
+				// if (quasis.value.raw) {
+				if (willSkipString(quasis.value.raw)) {
+					quasises.push(quasis);
+					if (!quasis.tail) expressions.push(expression);
+				} else {
+					expressions.push(appendString(quasis.value.raw).ast);
+					quasises.push(t.templateElement({ raw: '' }, quasis.tail));
+
+					if (quasis.tail) {
+						quasises.push(t.templateElement({ raw: '' }, true));
+					} else {
+						quasises.push(t.templateElement({ raw: '' }, false));
+						expressions.push(expression);
+					}
+				}
+				// }
+
+				// false if .tail === true
+
+				/*if (!element.tail) {
+				expressions.push(nodeExpressions.shift());
+				quasis.push(t.templateElement({ raw: '' }, false));
+			}*/
+			}
+
+			// quasis.push(t.templateElement({ raw: '' }, true));
+
+			const ast = t.templateLiteral(quasises, expressions);
+
+			if (canMagic) {
+				path.scope.traverse(
+					ast,
+					// eslint-disable-next-line @typescript-eslint/no-empty-function
+					createVisitors(false)
+				);
+
+				magic.overwrite(path.node.start, path.node.end, generate(ast).code);
+			}
+
+			const [newPath] = path.replaceWith(ast);
+
+			newPath.skip();
+
+			/*} catch (err) {
+			console.error('failure producting TemplateLiteral with @babel/types:');
+			console.error(err);
+			console.log(generate(path.node).code);
+			}*/
 		},
 		MemberExpression(path) {
 			// obj.'string literal...'
@@ -197,11 +257,12 @@ export default function obfuscate(
 
 			const appent = appendString(path.node.property.name);
 
-			magic.overwrite(
-				path.node.property.start - 1, // the . in non-computed property access
-				path.node.property.end,
-				`[${appent.code}]`
-			);
+			if (canMagic)
+				magic.overwrite(
+					path.node.property.start - 1, // the . in non-computed property access
+					path.node.property.end,
+					`[${appent.code}]`
+				);
 
 			path.node.computed = true;
 			path.node.property = appent.ast;
@@ -231,35 +292,24 @@ export default function obfuscate(
 
 			const appent = appendString(key);
 
-			if (!path.node.computed) {
-				// fake computed
-				magic.appendLeft(pos[0], '[');
-				magic.appendRight(pos[1], ']');
+			if (canMagic) {
+				if (!path.node.computed) {
+					// fake computed
+					magic.appendLeft(pos[0], '[');
+					magic.appendRight(pos[1], ']');
+				}
+
+				magic.overwrite(pos[0], pos[1], appent.code);
 			}
-
-			magic.overwrite(pos[0], pos[1], appent.code);
-
-			// console.log(magic.slice(pos[0] - 10, pos[1] + 10));
-
-			/*const ast = t.objectProperty(
-				appent.ast,
-				path.node.value,
-				true,
-				(path.node as any).shorthand,
-				path.node.decorators
-			);*/
 
 			path.node.computed = true;
 			path.node.key = appent.ast;
-
-			// cannot skip!
-			// path.replaceWith(ast)[0].skip();
 		},
 		ObjectProperty(path) {
-			objProp(path);
+			objProp(canMagic, path);
 		},
 		ObjectMethod(path) {
-			objProp(path);
+			objProp(canMagic, path);
 		},
 		StringLiteral(path) {
 			if (willSkipString(path.node.value)) return;
@@ -284,75 +334,33 @@ export default function obfuscate(
 				? ' '
 				: '';
 
-			magic.overwrite(
-				path.node.start,
-				path.node.end,
-				padLeft + appent.code + padRight
-			);
+			if (canMagic)
+				magic.overwrite(
+					path.node.start,
+					path.node.end,
+					padLeft + appent.code + padRight
+				);
 
 			path.replaceWith(appent.ast)[0].skip();
 		},
 	});
 
-	for (const node of templateLiterals) {
-		const quasises: t.TemplateElement[] = [];
-		const expressions: (t.TSType | t.Expression)[] = [];
+	traverse(tree, createVisitors(true));
 
-		for (let i = 0; i < node.quasis.length; i++) {
-			const quasis = node.quasis[i];
-			// for every quasis, there's an expression UNLESS ITS THE TAIL
-			const expression = node.expressions[i];
-
-			// if (quasis.value.raw) {
-			if (willSkipString(quasis.value.raw)) {
-				quasises.push(quasis);
-				if (!quasis.tail) expressions.push(expression);
-			} else {
-				expressions.push(appendString(quasis.value.raw).ast);
-				quasises.push(t.templateElement({ raw: '' }, quasis.tail));
-
-				if (quasis.tail) {
-					quasises.push(t.templateElement({ raw: '' }, true));
-				} else {
-					quasises.push(t.templateElement({ raw: '' }, false));
-					expressions.push(expression);
-				}
-			}
-			// }
-
-			// false if .tail === true
-
-			/*if (!element.tail) {
-				expressions.push(nodeExpressions.shift());
-				quasis.push(t.templateElement({ raw: '' }, false));
-			}*/
-		}
-
-		// quasis.push(t.templateElement({ raw: '' }, true));
-
-		// dont skip the entire node and children
-		// keep children but dont re-process replaced node
-		// path.skip()
-
-		const ast = t.templateLiteral(quasises, expressions);
-
-		magic.overwrite(node.start, node.end, generate(ast).code);
-
-		/*} catch (err) {
-			console.error('struggling to do', generate(node).code);
-			console.error(err);
-		}*/
-		// path.replaceWith(ast);
-	}
-
-	magic.replace(/^"use strict";/, '');
-	magic.appendLeft(0, `"use strict";(${callFunction}=>{`);
+	// magic.replace(/^"use strict";/, '');
+	// magic.appendLeft(0, '"use strict";');
+	magic.appendLeft(0, `(${callFunction}=>{`);
 	// babel's generator can escape the string for us
 	magic.append(
 		`\n})(${callFunctionBody(key)}(${
 			generate(t.stringLiteral(stringsDump)).code
 		}))`
 	);
+
+	// look for sourceMappingURL
+	// when this plugin is placed in optimization.minimizers, we receive code that already has the sourceMappingURL appended to it..
+	// the hooks from webpack-obfuscator (what the plugin is based off) isn't ready for minimizer usage
+	// console.log(code.slice(-75));
 
 	return {
 		map: magic.generateMap(
