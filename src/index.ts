@@ -97,7 +97,7 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 
 							const { code: obfuscatedSource, map: obfuscationSourceMap } =
 								obfuscate(inputSource.toString(), {
-									sourceMap: {
+									sourceMap: this.options.sourceMap && {
 										source: fileName,
 										file: fileName + '.map',
 									},

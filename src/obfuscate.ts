@@ -49,30 +49,47 @@ const callFunctionBody = (key: number) => {
 	);
 };
 
+interface ObfuscateSourceMapOptions {
+	/**
+	 * The filename of the input.
+	 */
+	source: string;
+	/**
+	 * Where the source map will be written.
+	 */
+	file: string;
+}
+
 export interface ObfuscateOptions {
 	salt?: number;
-	sourceMap?: {
-		/**
-		 * The filename of the input.
-		 */
-		source: string;
-		/**
-		 * Where the source map will be written.
-		 */
-		file: string;
-	};
+	sourceMap?: ObfuscateSourceMapOptions | false;
 	exclude?: (identifier: string) => boolean;
 }
 
 export interface ObfuscateResult {
 	code: string;
-	map: SourceMap;
+	map?: SourceMap;
 }
 
 export default function obfuscate(
 	code: string,
+	options: ObfuscateOptions & { sourceMap: ObfuscateSourceMapOptions }
+): ObfuscateResult & { map: SourceMap };
+
+export default function obfuscate(
+	code: string,
+	options?: ObfuscateOptions & { sourceMap?: false }
+): Omit<ObfuscateResult, 'map'>;
+
+export default function obfuscate(
+	code: string,
+	options?: ObfuscateOptions
+): ObfuscateResult;
+
+export default function obfuscate(
+	code: string,
 	options: ObfuscateOptions = {}
-): ObfuscateResult {
+) {
 	const goodSalt = isNaN(options.salt) ? 0 : options.salt;
 
 	const badKey = 0xfff + (goodSalt % 0xfff);
@@ -373,17 +390,18 @@ export default function obfuscate(
 	// the hooks from webpack-obfuscator (what the plugin is based off) isn't ready for minimizer usage
 	// console.log(code.slice(-75));
 
-	return {
-		map: magic.generateMap(
-			options.sourceMap
-				? {
-						source: options.sourceMap.source,
-						file: options.sourceMap.file,
-						// quality is quickly lost when set to false
-						hires: true,
-				  }
-				: {}
-		),
+	const result: ObfuscateResult = {
 		code: magic.toString(),
 	};
+
+	if (options.sourceMap) {
+		result.map = magic.generateMap({
+			source: options.sourceMap.source,
+			file: options.sourceMap.file,
+			// quality is quickly lost when set to false
+			hires: true,
+		});
+	}
+
+	return result;
 }
