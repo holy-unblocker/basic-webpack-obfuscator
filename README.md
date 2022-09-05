@@ -24,16 +24,16 @@ const webpackConfig: Configuration = {
 	// ...
 	optimization: {
 		// ...
-		minimizer: [
+		plugins: [
 			// ...
 			new BasicWebpackObfuscator(),
 			// ...
 		],
 		// ...
-		minimizer: [
+		plugins: [
 			// ...
 			new BasicWebpackObfuscator({
-				sourceMap: process.env.NODE_ENV === 'production',
+				sourceMap: process.env.GENERATE_SOURCEMAP !== 'false',
 				salt: 777,
 				allowedExtensions: ['.js'],
 			}),
@@ -47,7 +47,7 @@ const webpackConfig: Configuration = {
 ```ts
 export interface Options {
     /**
-     * If sourcemaps should be produced.
+     * If source maps should be produced.
      */
     sourceMap?: boolean;
     /**

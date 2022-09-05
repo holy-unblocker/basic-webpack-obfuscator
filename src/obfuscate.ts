@@ -51,7 +51,16 @@ const callFunctionBody = (key: number) => {
 
 export interface ObfuscateOptions {
 	salt?: number;
-	source?: string | false;
+	sourceMap?: {
+		/**
+		 * The filename of the input.
+		 */
+		source: string;
+		/**
+		 * Where the source map will be written.
+		 */
+		file: string;
+	};
 	exclude?: (identifier: string) => boolean;
 }
 
@@ -82,9 +91,6 @@ export default function obfuscate(
 		allowImportExportEverywhere: true,
 		allowReturnOutsideFunction: true,
 		attachComment: false,
-		...(typeof options.source === 'string'
-			? { sourceFilename: options.source }
-			: {}),
 	});
 
 	const strings = new Map<string, { start: number; end: number }>();
@@ -347,8 +353,13 @@ export default function obfuscate(
 
 	traverse(tree, createVisitors(true));
 
-	// magic.replace(/^"use strict";/, '');
-	// magic.appendLeft(0, '"use strict";');
+	const useStrict = '"use strict";';
+
+	if (code.startsWith(useStrict)) {
+		magic.remove(0, useStrict.length);
+		magic.appendLeft(0, '"use strict";');
+	}
+
 	magic.appendLeft(0, `(${callFunction}=>{`);
 	// babel's generator can escape the string for us
 	magic.append(
@@ -364,9 +375,12 @@ export default function obfuscate(
 
 	return {
 		map: magic.generateMap(
-			typeof options.source === 'string'
+			options.sourceMap
 				? {
-						source: options.source,
+						source: options.sourceMap.source,
+						file: options.sourceMap.file,
+						// quality is quickly lost when set to false
+						hires: true,
 				  }
 				: {}
 		),

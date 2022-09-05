@@ -9,7 +9,7 @@ type Source = Compilation['assets'][''];
 
 export interface Options {
 	/**
-	 * If sourcemaps should be produced.
+	 * If source maps should be produced.
 	 */
 	sourceMap?: boolean;
 	/**
@@ -69,8 +69,6 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 									.toLowerCase()
 									.slice(0, fileName.length - 4);
 
-								console.log('FROM:', sourcemapOutput[srcName]);
-
 								const transferredSourceMap = transfer({
 									fromSourceMap: sourcemapOutput[srcName],
 									toSourceMap: compilation.assets[fileName].source().toString(),
@@ -99,7 +97,10 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 
 							const { code: obfuscatedSource, map: obfuscationSourceMap } =
 								obfuscate(inputSource.toString(), {
-									source: this.options.sourceMap && fileName,
+									sourceMap: {
+										source: fileName,
+										file: fileName + '.map',
+									},
 									exclude: (string) => {
 										for (const hash of contentHashes)
 											if (hash.includes(string)) return true;
@@ -118,6 +119,7 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 								});
 
 								const finalSourcemap = JSON.parse(transferredSourceMap);
+
 								finalSourcemap['sourcesContent'] =
 									inputSourceMap['sourcesContent'];
 
