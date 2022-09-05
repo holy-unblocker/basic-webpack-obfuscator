@@ -62,13 +62,14 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 
 					for (const chunk of compilation.chunks) {
 						for (const fileName of chunk.files) {
-							if (
-								this.options.sourceMap &&
-								fileName.toLowerCase().endsWith('.map')
-							) {
+							const parsedFileName = parse(fileName);
+
+							if (this.options.sourceMap && parsedFileName.ext === '.map') {
 								const srcName = fileName
 									.toLowerCase()
 									.slice(0, fileName.length - 4);
+
+								console.log('FROM:', sourcemapOutput[srcName]);
 
 								const transferredSourceMap = transfer({
 									fromSourceMap: sourcemapOutput[srcName],
@@ -89,7 +90,7 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 								continue;
 							}
 
-							if (!this.options.allowedExtensions.includes(parse(fileName).ext))
+							if (!this.options.allowedExtensions.includes(parsedFileName.ext))
 								continue;
 
 							const asset = compilation.assets[fileName];
@@ -100,9 +101,8 @@ export default class BasicWebpackObfuscator implements WebpackPluginInstance {
 								obfuscate(inputSource.toString(), {
 									source: this.options.sourceMap && fileName,
 									exclude: (string) => {
-										for (const hash of contentHashes) {
+										for (const hash of contentHashes)
 											if (hash.includes(string)) return true;
-										}
 
 										return false;
 									},
