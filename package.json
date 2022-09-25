@@ -34,6 +34,7 @@
 		"@ianvs/prettier-plugin-sort-imports": "^3.4.2",
 		"@types/babel__generator": "^7.6.4",
 		"@types/babel__traverse": "^7.18.1",
+		"@types/multi-stage-sourcemap": "^0.3.0",
 		"@typescript-eslint/eslint-plugin": "^5.36.1",
 		"@typescript-eslint/parser": "^5.36.1",
 		"eslint": "^8.21.0",
