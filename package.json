@@ -4,7 +4,7 @@
 	"license": "GPLv3",
 	"repository": {
 		"type": "git",
-		"url": "https://git.holy.how/holy/basic-webpack-obfuscator.git"
+		"url": "https://github.com/holy-unblocker/basic-webpack-obfuscator.git"
 	},
 	"exports": {
 		".": "./dist/index.js",
